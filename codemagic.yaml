@@ -1,13 +1,135 @@
-GitHub
-   ↓
-DanaNativeReceiver_AUTO_ON_V6.zip
-   ↓
-Codemagic extract ZIP
-   ↓
-settings.gradle
-build.gradle
-app/
-   ↓
-Gradle build
-   ↓
-APK
+workflows:
+  dana-native-receiver-v6:
+    name: DanaNativeReceiver APK V6 SAFE BACKGROUND
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      java: 17
+
+    scripts:
+      - name: Extract V6 source
+        script: |
+          set -e
+
+          cd "$CM_BUILD_DIR"
+
+          echo "=== FILES IN REPOSITORY ==="
+          ls -lah
+
+          ZIP_FILE="DanaNativeReceiver_AUTO_ON_V6.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: $ZIP_FILE tidak ditemukan."
+            exit 1
+          fi
+
+          echo "=== EXTRACT V6 SOURCE ==="
+          unzip -o "$ZIP_FILE" -d "$CM_BUILD_DIR"
+
+          echo "=== PROJECT AFTER EXTRACT ==="
+          ls -lah
+
+      - name: Check project files
+        script: |
+          set -e
+
+          cd "$CM_BUILD_DIR"
+
+          echo "=== CHECK PROJECT ==="
+          pwd
+
+          test -f settings.gradle
+          test -f build.gradle
+          test -f app/build.gradle
+
+          test -f app/src/main/java/id/varino/danareceiver/MainActivity.java
+          test -f app/src/main/java/id/varino/danareceiver/NtfyService.java
+          test -f app/src/main/java/id/varino/danareceiver/BootReceiver.java
+          test -f app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java
+
+          echo "================================"
+          echo "ALL V6 FILES FOUND"
+          echo "================================"
+
+      - name: Configure Android SDK
+        script: |
+          set -e
+
+          cd "$CM_BUILD_DIR"
+
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Install Gradle 8.9
+        script: |
+          set -e
+
+          cd "$CM_BUILD_DIR"
+
+          if [ ! -d "$CM_BUILD_DIR/gradle-8.9" ]; then
+            curl -L \
+              -o gradle-8.9-bin.zip \
+              https://services.gradle.org/distributions/gradle-8.9-bin.zip
+
+            unzip -q gradle-8.9-bin.zip
+          fi
+
+          export PATH="$CM_BUILD_DIR/gradle-8.9/bin:$PATH"
+
+          gradle --version
+
+      - name: Build V6 APK
+        script: |
+          set -e
+
+          cd "$CM_BUILD_DIR"
+
+          export PATH="$CM_BUILD_DIR/gradle-8.9/bin:$PATH"
+
+          echo "=== BUILD V6 APK ==="
+
+          gradle \
+            assembleDebug \
+            --stacktrace \
+            --no-daemon
+
+      - name: Verify APK
+        script: |
+          set -e
+
+          cd "$CM_BUILD_DIR"
+
+          echo "=== SEARCH APK ==="
+
+          APK_PATH=$(find "$CM_BUILD_DIR/app/build/outputs/apk" \
+            -type f \
+            -name "*.apk" \
+            | head -1)
+
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: APK tidak ditemukan."
+            exit 1
+          fi
+
+          echo "APK ditemukan:"
+          echo "$APK_PATH"
+
+          ls -lh "$APK_PATH"
+
+          mkdir -p "$CM_EXPORT_DIR"
+
+          cp "$APK_PATH" \
+            "$CM_EXPORT_DIR/DanaNativeReceiver-V6-SAFE-BACKGROUND.apk"
+
+          echo "=== ARTIFACT ==="
+          ls -lh "$CM_EXPORT_DIR"
+
+    artifacts:
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V6-SAFE-BACKGROUND.apk

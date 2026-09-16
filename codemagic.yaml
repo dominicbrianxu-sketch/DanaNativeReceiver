@@ -1,6 +1,6 @@
 workflows:
   android-debug:
-    name: DanaNativeReceiver APK V4
+    name: DanaNativeReceiver APK V4 FIXED
     max_build_duration: 60
 
     environment:
@@ -11,34 +11,51 @@ workflows:
         script: |
           set -e
 
-          echo "=== Prepare project ==="
+          echo "=== PREPARE ANDROID PROJECT ==="
+
           rm -rf "$CM_BUILD_DIR/v4"
           mkdir -p "$CM_BUILD_DIR/v4"
 
-          unzip -o "$CM_BUILD_DIR/DanaNativeReceiver_AUTO_ON_V4.zip" -d "$CM_BUILD_DIR/v4"
+          echo "Mengekstrak V4 FIXED..."
 
-          echo "=== Project files ==="
-          find "$CM_BUILD_DIR/v4" -maxdepth 5 -type f | sort
+          unzip -o \
+            "$CM_BUILD_DIR/DanaNativeReceiver_AUTO_ON_V4_FIXED.zip" \
+            -d "$CM_BUILD_DIR/v4"
 
-          test -f "$CM_BUILD_DIR/v4/settings.gradle" || {
+          echo "=== ISI PROJECT ==="
+
+          find "$CM_BUILD_DIR/v4" \
+            -maxdepth 5 \
+            -type f \
+            | sort
+
+          echo "=== CEK PROJECT ==="
+
+          if [ ! -f "$CM_BUILD_DIR/v4/settings.gradle" ] && \
+             [ ! -f "$CM_BUILD_DIR/v4/settings.gradle.kts" ]; then
             echo "ERROR: settings.gradle tidak ditemukan"
             exit 1
-          }
+          fi
 
-          test -f "$CM_BUILD_DIR/v4/app/build.gradle" || {
+          if [ ! -f "$CM_BUILD_DIR/v4/app/build.gradle" ] && \
+             [ ! -f "$CM_BUILD_DIR/v4/app/build.gradle.kts" ]; then
             echo "ERROR: app/build.gradle tidak ditemukan"
             exit 1
-          }
+          fi
+
+          echo "Project Android ditemukan."
 
       - name: Configure Android SDK
         script: |
           set -e
 
-          echo "=== Android SDK ==="
+          echo "=== CONFIGURE ANDROID SDK ==="
+
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
           if [ -n "$ANDROID_SDK_ROOT" ]; then
-            echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/v4/local.properties"
+            echo "sdk.dir=$ANDROID_SDK_ROOT" \
+              > "$CM_BUILD_DIR/v4/local.properties"
           fi
 
           SDKMANAGER=""
@@ -50,42 +67,57 @@ workflows:
           fi
 
           if [ -n "$SDKMANAGER" ]; then
-            echo "sdkmanager: $SDKMANAGER"
-            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+
+            echo "sdkmanager ditemukan:"
+            echo "$SDKMANAGER"
+
+            yes | "$SDKMANAGER" --licenses \
+              >/dev/null 2>&1 || true
 
             "$SDKMANAGER" \
               "platform-tools" \
               "platforms;android-35" \
               "build-tools;35.0.0"
+
           else
+
             echo "sdkmanager tidak ditemukan."
-            echo "Melanjutkan dengan Android SDK bawaan Codemagic."
+            echo "Menggunakan Android SDK bawaan Codemagic."
+
           fi
 
       - name: Install Gradle 8.9
         script: |
           set -e
 
+          echo "=== INSTALL GRADLE 8.9 ==="
+
           cd "$CM_BUILD_DIR"
 
           if [ ! -x "$CM_BUILD_DIR/gradle-8.9/bin/gradle" ]; then
-            echo "=== Download Gradle 8.9 ==="
 
-            curl -fsSL -o gradle-8.9-bin.zip \
+            echo "Download Gradle 8.9..."
+
+            curl -fsSL \
+              -o gradle-8.9-bin.zip \
               https://services.gradle.org/distributions/gradle-8.9-bin.zip
 
             unzip -q -o gradle-8.9-bin.zip
+
           fi
 
-          "$CM_BUILD_DIR/gradle-8.9/bin/gradle" --version
+          echo "Gradle version:"
+
+          "$CM_BUILD_DIR/gradle-8.9/bin/gradle" \
+            --version
 
       - name: Build debug APK
         script: |
           set -e
 
-          cd "$CM_BUILD_DIR/v4"
+          echo "=== BUILD DANA NATIVE RECEIVER V4 FIXED ==="
 
-          echo "=== Build DanaNativeReceiver V4 ==="
+          cd "$CM_BUILD_DIR/v4"
 
           "$CM_BUILD_DIR/gradle-8.9/bin/gradle" \
             assembleDebug \
@@ -96,11 +128,11 @@ workflows:
         script: |
           set -e
 
-          echo "=== APK hasil build ==="
+          echo "=== MENCARI APK ==="
 
           find "$CM_BUILD_DIR/v4" \
             -type f \
-            -path "*/build/outputs/apk/debug/*.apk" \
+            -name "*.apk" \
             -print
 
           APK="$(find "$CM_BUILD_DIR/v4" \
@@ -109,11 +141,16 @@ workflows:
             | head -n 1)"
 
           if [ -z "$APK" ]; then
-            echo "ERROR: APK tidak ditemukan."
+
+            echo "ERROR: APK TIDAK DITEMUKAN"
+
             exit 1
+
           fi
 
-          echo "APK BERHASIL:"
+          echo "================================="
+          echo "APK BERHASIL DIBUAT"
+          echo "================================="
           echo "$APK"
 
     artifacts:

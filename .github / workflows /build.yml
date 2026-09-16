@@ -1,7 +1,6 @@
 name: Test GitHub Actions
 
-on:
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 
 jobs:
   test:
@@ -9,7 +8,4 @@ jobs:
 
     steps:
       - name: Test
-        run: |
-          echo "GitHub Actions BERHASIL"
-          echo "Repository: ${{ github.repository }}"
-          echo "Branch: ${{ github.ref }}"
+        run: echo "GitHub Actions BERHASIL"

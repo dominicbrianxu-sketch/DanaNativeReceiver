@@ -2,88 +2,49 @@ workflows:
   android-debug:
     name: DanaNativeReceiver APK V4 FIXED2
     max_build_duration: 60
+    instance_type: mac_mini_m2
 
     environment:
       java: 17
 
     scripts:
+
       - name: Prepare Android project
         script: |
           set -e
 
-          echo "=== PREPARE ANDROID PROJECT ==="
+          echo "=== PREPARE PROJECT ==="
 
           rm -rf "$CM_BUILD_DIR/v4"
           mkdir -p "$CM_BUILD_DIR/v4"
-
-          echo "Mengekstrak V4 FIXED2..."
 
           unzip -o \
             "$CM_BUILD_DIR/DanaNativeReceiver_AUTO_ON_V4_FIXED2.zip" \
             -d "$CM_BUILD_DIR/v4"
 
-          echo "=== ISI PROJECT ==="
-
-          find "$CM_BUILD_DIR/v4" \
-            -maxdepth 6 \
-            -type f \
-            | sort
-
-          echo "=== CEK PROJECT ==="
-
-          if [ ! -f "$CM_BUILD_DIR/v4/settings.gradle" ] && \
-             [ ! -f "$CM_BUILD_DIR/v4/settings.gradle.kts" ]; then
-            echo "ERROR: settings.gradle tidak ditemukan"
-            exit 1
-          fi
-
-          if [ ! -f "$CM_BUILD_DIR/v4/app/build.gradle" ] && \
-             [ ! -f "$CM_BUILD_DIR/v4/app/build.gradle.kts" ]; then
-            echo "ERROR: app/build.gradle tidak ditemukan"
-            exit 1
-          fi
-
-          echo "Project Android ditemukan."
+          echo "=== PROJECT FILES ==="
+          find "$CM_BUILD_DIR/v4" -maxdepth 5 -type f | sort
 
       - name: Configure Android SDK
         script: |
           set -e
 
-          echo "=== CONFIGURE ANDROID SDK ==="
-
+          echo "=== ANDROID SDK ==="
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
-          if [ -n "$ANDROID_SDK_ROOT" ]; then
-            echo "sdk.dir=$ANDROID_SDK_ROOT" \
-              > "$CM_BUILD_DIR/v4/local.properties"
-          fi
-
-          SDKMANAGER=""
+          echo "sdk.dir=$ANDROID_SDK_ROOT" \
+            > "$CM_BUILD_DIR/v4/local.properties"
 
           if command -v sdkmanager >/dev/null 2>&1; then
-            SDKMANAGER="$(command -v sdkmanager)"
-          elif [ -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          fi
+            yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
-          if [ -n "$SDKMANAGER" ]; then
-
-            echo "sdkmanager ditemukan:"
-            echo "$SDKMANAGER"
-
-            yes | "$SDKMANAGER" --licenses \
-              >/dev/null 2>&1 || true
-
-            "$SDKMANAGER" \
+            sdkmanager \
               "platform-tools" \
               "platforms;android-35" \
-              "build-tools;35.0.0"
-
+              "build-tools;35.0.0" || true
           else
-
             echo "sdkmanager tidak ditemukan."
             echo "Menggunakan Android SDK bawaan Codemagic."
-
           fi
 
       - name: Install Gradle 8.9
@@ -94,61 +55,107 @@ workflows:
 
           cd "$CM_BUILD_DIR"
 
-          if [ ! -x "$CM_BUILD_DIR/gradle-8.9/bin/gradle" ]; then
+          rm -rf gradle-8.9
 
-            echo "Download Gradle 8.9..."
+          curl -L \
+            -o gradle.zip \
+            https://services.gradle.org/distributions/gradle-8.9-bin.zip
 
-            curl -fsSL \
-              -o gradle-8.9-bin.zip \
-              https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          unzip -q gradle.zip
 
-            unzip -q -o gradle-8.9-bin.zip
-
-          fi
-
-          "$CM_BUILD_DIR/gradle-8.9/bin/gradle" \
-            --version
+          "$CM_BUILD_DIR/gradle-8.9/bin/gradle" --version
 
       - name: Check Java source files
         script: |
           set -e
 
-          echo "=== CEK FILE JAVA ==="
+          echo "=== CHECK SOURCE FILES ==="
 
-          find "$CM_BUILD_DIR/v4/app/src/main/java" \
-            -type f \
-            -name "*.java" \
-            -print
+          REQUIRED_FILES="
+          NtfyService.java
+          BootReceiver.java
+          DanaAutoClickAccessibilityService.java
+          MainActivity.java
+          "
 
-          echo "=== CEK SERVICE ==="
+          for FILE in $REQUIRED_FILES; do
+            FOUND=$(find "$CM_BUILD_DIR/v4" \
+              -type f \
+              -name "$FILE" \
+              | head -n 1)
 
-          test -f "$CM_BUILD_DIR/v4/app/src/main/java/id/varino/danareceiver/NtfyService.java"
+            if [ -z "$FOUND" ]; then
+              echo "ERROR: $FILE TIDAK DITEMUKAN"
+              exit 1
+            fi
 
-          test -f "$CM_BUILD_DIR/v4/app/src/main/java/id/varino/danareceiver/BootReceiver.java"
-
-          test -f "$CM_BUILD_DIR/v4/app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
-
-          echo "Semua file service utama ditemukan."
+            echo "OK: $FOUND"
+          done
 
       - name: Build debug APK
         script: |
           set -e
 
-          echo "=== BUILD DANA NATIVE RECEIVER V4 FIXED2 ==="
+          echo "=== BUILD APK ==="
 
           cd "$CM_BUILD_DIR/v4"
 
           "$CM_BUILD_DIR/gradle-8.9/bin/gradle" \
             assembleDebug \
-            --stacktrace \
-            --no-daemon
+            --stacktrace
 
-      - name: Verify APK
+      - name: Find and export APK
         script: |
           set -e
 
-          echo "=== MENCARI APK ==="
+          echo "=== SEARCH APK ==="
 
           find "$CM_BUILD_DIR/v4" \
             -type f \
-           
+            -name "*.apk" \
+            -print
+
+          APK=$(find "$CM_BUILD_DIR/v4" \
+            -type f \
+            -path "*/build/outputs/apk/debug/*.apk" \
+            | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK TIDAK DITEMUKAN"
+            exit 1
+          fi
+
+          echo "APK ditemukan:"
+          echo "$APK"
+
+          echo "=== EXPORT APK ==="
+
+          mkdir -p "$CM_EXPORT_DIR"
+
+          cp "$APK" \
+            "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk"
+
+          echo "APK berhasil disalin ke:"
+          echo "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk"
+
+          echo "=== EXPORT DIRECTORY ==="
+
+          ls -lah "$CM_EXPORT_DIR"
+
+      - name: Verify exported APK
+        script: |
+          set -e
+
+          echo "=== VERIFY ARTIFACT ==="
+
+          if [ ! -f "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk" ]; then
+            echo "ERROR: Artifact APK tidak ada"
+            exit 1
+          fi
+
+          ls -lh "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk"
+
+          file "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk"
+
+    artifacts:
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V4.apk

@@ -1,161 +1,110 @@
 workflows:
-  android-debug:
-    name: DanaNativeReceiver APK V4 FIXED2
-    max_build_duration: 60
+  dana-native-receiver-v6:
+    name: DanaNativeReceiver APK V6 SAFE BACKGROUND
+    max_build_duration: 120
     instance_type: mac_mini_m2
 
     environment:
       java: 17
 
     scripts:
-
-      - name: Prepare Android project
+      - name: Check project files
         script: |
           set -e
 
-          echo "=== PREPARE PROJECT ==="
+          echo "=== CHECK PROJECT ==="
+          pwd
 
-          rm -rf "$CM_BUILD_DIR/v4"
-          mkdir -p "$CM_BUILD_DIR/v4"
+          test -f settings.gradle
+          test -f build.gradle
+          test -f app/build.gradle
 
-          unzip -o \
-            "$CM_BUILD_DIR/DanaNativeReceiver_AUTO_ON_V4_FIXED2.zip" \
-            -d "$CM_BUILD_DIR/v4"
+          test -f app/src/main/java/id/varino/danareceiver/MainActivity.java
+          test -f app/src/main/java/id/varino/danareceiver/NtfyService.java
+          test -f app/src/main/java/id/varino/danareceiver/BootReceiver.java
+          test -f app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java
 
-          echo "=== PROJECT FILES ==="
-          find "$CM_BUILD_DIR/v4" -maxdepth 5 -type f | sort
+          echo "All required files found."
 
       - name: Configure Android SDK
         script: |
           set -e
 
-          echo "=== ANDROID SDK ==="
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
 
-          echo "sdk.dir=$ANDROID_SDK_ROOT" \
-            > "$CM_BUILD_DIR/v4/local.properties"
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
-          if command -v sdkmanager >/dev/null 2>&1; then
-            yes | sdkmanager --licenses >/dev/null 2>&1 || true
-
-            sdkmanager \
-              "platform-tools" \
-              "platforms;android-35" \
-              "build-tools;35.0.0" || true
-          else
-            echo "sdkmanager tidak ditemukan."
-            echo "Menggunakan Android SDK bawaan Codemagic."
-          fi
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Install Gradle 8.9
         script: |
           set -e
 
-          echo "=== INSTALL GRADLE 8.9 ==="
+          cd "$CM_BUILD_DIR"
+
+          if [ ! -d "$CM_BUILD_DIR/gradle-8.9" ]; then
+            curl -L \
+              -o gradle-8.9-bin.zip \
+              https://services.gradle.org/distributions/gradle-8.9-bin.zip
+
+            unzip -q gradle-8.9-bin.zip
+          fi
+
+          export PATH="$CM_BUILD_DIR/gradle-8.9/bin:$PATH"
+
+          gradle --version
+
+      - name: Build V6 APK
+        script: |
+          set -e
 
           cd "$CM_BUILD_DIR"
 
-          rm -rf gradle-8.9
+          export PATH="$CM_BUILD_DIR/gradle-8.9/bin:$PATH"
 
-          curl -L \
-            -o gradle.zip \
-            https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          echo "=== BUILD DEBUG APK ==="
 
-          unzip -q gradle.zip
-
-          "$CM_BUILD_DIR/gradle-8.9/bin/gradle" --version
-
-      - name: Check Java source files
-        script: |
-          set -e
-
-          echo "=== CHECK SOURCE FILES ==="
-
-          REQUIRED_FILES="
-          NtfyService.java
-          BootReceiver.java
-          DanaAutoClickAccessibilityService.java
-          MainActivity.java
-          "
-
-          for FILE in $REQUIRED_FILES; do
-            FOUND=$(find "$CM_BUILD_DIR/v4" \
-              -type f \
-              -name "$FILE" \
-              | head -n 1)
-
-            if [ -z "$FOUND" ]; then
-              echo "ERROR: $FILE TIDAK DITEMUKAN"
-              exit 1
-            fi
-
-            echo "OK: $FOUND"
-          done
-
-      - name: Build debug APK
-        script: |
-          set -e
-
-          echo "=== BUILD APK ==="
-
-          cd "$CM_BUILD_DIR/v4"
-
-          "$CM_BUILD_DIR/gradle-8.9/bin/gradle" \
+          gradle \
             assembleDebug \
-            --stacktrace
+            --stacktrace \
+            --no-daemon
 
-      - name: Find and export APK
+      - name: Verify APK
         script: |
           set -e
+
+          cd "$CM_BUILD_DIR"
 
           echo "=== SEARCH APK ==="
 
-          find "$CM_BUILD_DIR/v4" \
+          APK_PATH=$(find "$CM_BUILD_DIR/app/build/outputs/apk" \
             -type f \
             -name "*.apk" \
-            -print
+            | head -1)
 
-          APK=$(find "$CM_BUILD_DIR/v4" \
-            -type f \
-            -path "*/build/outputs/apk/debug/*.apk" \
-            | head -n 1)
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK TIDAK DITEMUKAN"
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: APK tidak ditemukan."
             exit 1
           fi
 
           echo "APK ditemukan:"
-          echo "$APK"
+          echo "$APK_PATH"
 
-          echo "=== EXPORT APK ==="
+          echo "=== APK INFO ==="
+          ls -lh "$APK_PATH"
+
+          echo "=== COPY APK TO ARTIFACT DIRECTORY ==="
 
           mkdir -p "$CM_EXPORT_DIR"
 
-          cp "$APK" \
-            "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk"
+          cp "$APK_PATH" \
+            "$CM_EXPORT_DIR/DanaNativeReceiver-V6-SAFE-BACKGROUND.apk"
 
-          echo "APK berhasil disalin ke:"
-          echo "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk"
-
-          echo "=== EXPORT DIRECTORY ==="
-
-          ls -lah "$CM_EXPORT_DIR"
-
-      - name: Verify exported APK
-        script: |
-          set -e
-
-          echo "=== VERIFY ARTIFACT ==="
-
-          if [ ! -f "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk" ]; then
-            echo "ERROR: Artifact APK tidak ada"
-            exit 1
-          fi
-
-          ls -lh "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk"
-
-          file "$CM_EXPORT_DIR/DanaNativeReceiver-V4.apk"
+          echo "Artifact:"
+          ls -lh "$CM_EXPORT_DIR"
 
     artifacts:
-      - $CM_EXPORT_DIR/DanaNativeReceiver-V4.apk
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V6-SAFE-BACKGROUND.apk

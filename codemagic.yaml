@@ -1,6 +1,6 @@
 workflows:
   android-debug:
-    name: DanaNativeReceiver APK V4 FIXED
+    name: DanaNativeReceiver APK V4 FIXED2
     max_build_duration: 60
 
     environment:
@@ -16,16 +16,16 @@ workflows:
           rm -rf "$CM_BUILD_DIR/v4"
           mkdir -p "$CM_BUILD_DIR/v4"
 
-          echo "Mengekstrak V4 FIXED..."
+          echo "Mengekstrak V4 FIXED2..."
 
           unzip -o \
-            "$CM_BUILD_DIR/DanaNativeReceiver_AUTO_ON_V4_FIXED.zip" \
+            "$CM_BUILD_DIR/DanaNativeReceiver_AUTO_ON_V4_FIXED2.zip" \
             -d "$CM_BUILD_DIR/v4"
 
           echo "=== ISI PROJECT ==="
 
           find "$CM_BUILD_DIR/v4" \
-            -maxdepth 5 \
+            -maxdepth 6 \
             -type f \
             | sort
 
@@ -106,16 +106,35 @@ workflows:
 
           fi
 
-          echo "Gradle version:"
-
           "$CM_BUILD_DIR/gradle-8.9/bin/gradle" \
             --version
+
+      - name: Check Java source files
+        script: |
+          set -e
+
+          echo "=== CEK FILE JAVA ==="
+
+          find "$CM_BUILD_DIR/v4/app/src/main/java" \
+            -type f \
+            -name "*.java" \
+            -print
+
+          echo "=== CEK SERVICE ==="
+
+          test -f "$CM_BUILD_DIR/v4/app/src/main/java/id/varino/danareceiver/NtfyService.java"
+
+          test -f "$CM_BUILD_DIR/v4/app/src/main/java/id/varino/danareceiver/BootReceiver.java"
+
+          test -f "$CM_BUILD_DIR/v4/app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
+
+          echo "Semua file service utama ditemukan."
 
       - name: Build debug APK
         script: |
           set -e
 
-          echo "=== BUILD DANA NATIVE RECEIVER V4 FIXED ==="
+          echo "=== BUILD DANA NATIVE RECEIVER V4 FIXED2 ==="
 
           cd "$CM_BUILD_DIR/v4"
 
@@ -132,26 +151,4 @@ workflows:
 
           find "$CM_BUILD_DIR/v4" \
             -type f \
-            -name "*.apk" \
-            -print
-
-          APK="$(find "$CM_BUILD_DIR/v4" \
-            -type f \
-            -path "*/build/outputs/apk/debug/*.apk" \
-            | head -n 1)"
-
-          if [ -z "$APK" ]; then
-
-            echo "ERROR: APK TIDAK DITEMUKAN"
-
-            exit 1
-
-          fi
-
-          echo "================================="
-          echo "APK BERHASIL DIBUAT"
-          echo "================================="
-          echo "$APK"
-
-    artifacts:
-      - v4/app/build/outputs/apk/debug/*.apk
+           

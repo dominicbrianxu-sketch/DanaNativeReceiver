@@ -1,110 +1,13 @@
-workflows:
-  dana-native-receiver-v6:
-    name: DanaNativeReceiver APK V6 SAFE BACKGROUND
-    max_build_duration: 120
-    instance_type: mac_mini_m2
-
-    environment:
-      java: 17
-
-    scripts:
-      - name: Check project files
-        script: |
-          set -e
-
-          echo "=== CHECK PROJECT ==="
-          pwd
-
-          test -f settings.gradle
-          test -f build.gradle
-          test -f app/build.gradle
-
-          test -f app/src/main/java/id/varino/danareceiver/MainActivity.java
-          test -f app/src/main/java/id/varino/danareceiver/NtfyService.java
-          test -f app/src/main/java/id/varino/danareceiver/BootReceiver.java
-          test -f app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java
-
-          echo "All required files found."
-
-      - name: Configure Android SDK
-        script: |
-          set -e
-
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
-
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Install Gradle 8.9
-        script: |
-          set -e
-
-          cd "$CM_BUILD_DIR"
-
-          if [ ! -d "$CM_BUILD_DIR/gradle-8.9" ]; then
-            curl -L \
-              -o gradle-8.9-bin.zip \
-              https://services.gradle.org/distributions/gradle-8.9-bin.zip
-
-            unzip -q gradle-8.9-bin.zip
-          fi
-
-          export PATH="$CM_BUILD_DIR/gradle-8.9/bin:$PATH"
-
-          gradle --version
-
-      - name: Build V6 APK
-        script: |
-          set -e
-
-          cd "$CM_BUILD_DIR"
-
-          export PATH="$CM_BUILD_DIR/gradle-8.9/bin:$PATH"
-
-          echo "=== BUILD DEBUG APK ==="
-
-          gradle \
-            assembleDebug \
-            --stacktrace \
-            --no-daemon
-
-      - name: Verify APK
-        script: |
-          set -e
-
-          cd "$CM_BUILD_DIR"
-
-          echo "=== SEARCH APK ==="
-
-          APK_PATH=$(find "$CM_BUILD_DIR/app/build/outputs/apk" \
-            -type f \
-            -name "*.apk" \
-            | head -1)
-
-          if [ -z "$APK_PATH" ]; then
-            echo "ERROR: APK tidak ditemukan."
-            exit 1
-          fi
-
-          echo "APK ditemukan:"
-          echo "$APK_PATH"
-
-          echo "=== APK INFO ==="
-          ls -lh "$APK_PATH"
-
-          echo "=== COPY APK TO ARTIFACT DIRECTORY ==="
-
-          mkdir -p "$CM_EXPORT_DIR"
-
-          cp "$APK_PATH" \
-            "$CM_EXPORT_DIR/DanaNativeReceiver-V6-SAFE-BACKGROUND.apk"
-
-          echo "Artifact:"
-          ls -lh "$CM_EXPORT_DIR"
-
-    artifacts:
-      - $CM_EXPORT_DIR/DanaNativeReceiver-V6-SAFE-BACKGROUND.apk
+GitHub
+   ↓
+DanaNativeReceiver_AUTO_ON_V6.zip
+   ↓
+Codemagic extract ZIP
+   ↓
+settings.gradle
+build.gradle
+app/
+   ↓
+Gradle build
+   ↓
+APK

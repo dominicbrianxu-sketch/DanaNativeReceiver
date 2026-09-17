@@ -1,6 +1,6 @@
 workflows:
-  dana-native-receiver-v9:
-    name: DanaNativeReceiver APK V9 AUTO OPEN
+  dana-native-receiver-v11:
+    name: DanaNativeReceiver V11 - AUTO TAP + QR DANA Kaget
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -8,188 +8,104 @@ workflows:
       java: 17
 
     scripts:
-      - name: Extract V9 source
+      - name: Validate project structure
         script: |
-          set -e
+          set -euo pipefail
           cd "$CM_BUILD_DIR"
-
-          ZIP_FILE="DanaNativeReceiver_AUTO_OPEN_V9.zip"
-
-          if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: $ZIP_FILE tidak ditemukan"
-            echo "=== FILE DI BUILD DIRECTORY ==="
-            ls -lah
-            exit 1
-          fi
-
-          echo "=== EXTRACT V9 SOURCE ==="
-
-          unzip -o "$ZIP_FILE" -d "$CM_BUILD_DIR"
-
-          echo "=== SOURCE EXTRACTED ==="
-          ls -lah
-
-      - name: Check project files
-        script: |
-          set -e
-          cd "$CM_BUILD_DIR"
-
-          echo "=== CHECK PROJECT ==="
 
           test -f settings.gradle
           test -f build.gradle
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
-
+          test -f app/src/main/res/xml/dana_accessibility_service.xml
+          test -f app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java
           test -f app/src/main/java/id/varino/danareceiver/MainActivity.java
           test -f app/src/main/java/id/varino/danareceiver/NtfyService.java
           test -f app/src/main/java/id/varino/danareceiver/BootReceiver.java
-          test -f app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java
 
-          echo "======================================"
-          echo "ALL REQUIRED V9 FILES FOUND"
-          echo "======================================"
+          grep -q "com.google.mlkit:barcode-scanning:17.3.0" app/build.gradle
+          grep -q 'android:canTakeScreenshot="true"' app/src/main/res/xml/dana_accessibility_service.xml
+          grep -q 'android:canPerformGestures="true"' app/src/main/res/xml/dana_accessibility_service.xml
+
+          echo "Project V11 validation OK."
 
       - name: Configure Android SDK
         script: |
-          set -e
+          set -euo pipefail
           cd "$CM_BUILD_DIR"
 
-          echo "=== ANDROID SDK ==="
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
+          : "${ANDROID_SDK_ROOT:?ANDROID_SDK_ROOT is not set by Codemagic}"
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
           SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 
           if [ ! -x "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager tidak ditemukan:"
-            echo "$SDKMANAGER"
+            SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager -perm -111 2>/dev/null | head -1 || true)"
+          fi
 
-            echo "=== SEARCH SDKMANAGER ==="
-
-            find "$ANDROID_SDK_ROOT" \
-              -name sdkmanager \
-              -type f \
-              2>/dev/null || true
-
+          if [ -z "${SDKMANAGER:-}" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager tidak ditemukan di Android SDK."
             exit 1
           fi
 
-          export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-
-          echo "=== SDKMANAGER VERSION ==="
-          "$SDKMANAGER" --version
-
-          echo "=== ACCEPT SDK LICENSES ==="
-
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-
-          echo "=== INSTALL / VERIFY ANDROID PACKAGES ==="
 
           "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-          echo "=== ANDROID SDK READY ==="
-
       - name: Install Gradle 8.9
         script: |
-          set -e
+          set -euo pipefail
           cd "$CM_BUILD_DIR"
 
-          echo "=== GRADLE 8.9 ==="
+          GRADLE_VERSION="8.9"
+          GRADLE_DIR="$CM_BUILD_DIR/.gradle-dist/gradle-$GRADLE_VERSION"
+          GRADLE_ZIP="$CM_BUILD_DIR/.gradle-dist/gradle-$GRADLE_VERSION-bin.zip"
 
-          if [ ! -x "$CM_BUILD_DIR/gradle-8.9/bin/gradle" ]; then
+          mkdir -p "$CM_BUILD_DIR/.gradle-dist"
 
-            echo "Downloading Gradle 8.9..."
+          if [ ! -x "$GRADLE_DIR/bin/gradle" ]; then
+            curl --fail --location --retry 3 --retry-all-errors \
+              -o "$GRADLE_ZIP" \
+              "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
 
-            curl -fL \
-              -o gradle-8.9-bin.zip \
-              https://services.gradle.org/distributions/gradle-8.9-bin.zip
+            rm -rf "$GRADLE_DIR"
 
-            rm -rf gradle-8.9
-
-            unzip -q gradle-8.9-bin.zip
-
+            unzip -q "$GRADLE_ZIP" \
+              -d "$CM_BUILD_DIR/.gradle-dist"
           fi
 
-          echo "=== GRADLE VERSION ==="
+          "$GRADLE_DIR/bin/gradle" --version
 
-          "$CM_BUILD_DIR/gradle-8.9/bin/gradle" --version
-
-      - name: Build V9 APK
+      - name: Build debug APK
         script: |
-          set -e
+          set -euo pipefail
           cd "$CM_BUILD_DIR"
 
-          export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          GRADLE="$CM_BUILD_DIR/.gradle-dist/gradle-8.9/bin/gradle"
 
-          echo "======================================"
-          echo "BUILD V9 APK"
-          echo "======================================"
-
-          "$CM_BUILD_DIR/gradle-8.9/bin/gradle" \
-            assembleDebug \
+          "$GRADLE" clean assembleDebug \
             --stacktrace \
             --no-daemon
 
-          echo "======================================"
-          echo "GRADLE BUILD FINISHED"
-          echo "======================================"
-
-      - name: Verify and export APK
+      - name: Verify APK artifact
         script: |
-          set -e
+          set -euo pipefail
           cd "$CM_BUILD_DIR"
 
-          echo "======================================"
-          echo "SEARCHING FOR APK"
-          echo "======================================"
+          APK_PATH="$CM_BUILD_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
-          APK_PATH=$(find \
-            "$CM_BUILD_DIR/app/build/outputs/apk" \
-            -type f \
-            -name "*.apk" \
-            | head -1)
-
-          if [ -z "$APK_PATH" ]; then
-
-            echo "ERROR: APK tidak ditemukan."
-
-            echo "=== OUTPUT DIRECTORY ==="
-
-            find \
-              "$CM_BUILD_DIR/app/build/outputs" \
-              -maxdepth 5 \
-              -type f \
-              2>/dev/null || true
-
-            exit 1
-          fi
-
-          echo "APK ditemukan:"
-          echo "$APK_PATH"
-
-          echo "=== APK SIZE ==="
-
-          ls -lh "$APK_PATH"
-
-          echo "=== COPY TO CODEMAGIC ARTIFACT DIRECTORY ==="
+          test -f "$APK_PATH"
 
           mkdir -p "$CM_EXPORT_DIR"
 
-          cp \
-            "$APK_PATH" \
-            "$CM_EXPORT_DIR/DanaNativeReceiver-V9-AUTO-OPEN.apk"
-
-          echo "======================================"
-          echo "ARTIFACT READY"
-          echo "======================================"
+          cp "$APK_PATH" \
+            "$CM_EXPORT_DIR/DanaNativeReceiver-V11-AUTO-TAP-QR.apk"
 
           ls -lh \
-            "$CM_EXPORT_DIR/DanaNativeReceiver-V9-AUTO-OPEN.apk"
+            "$CM_EXPORT_DIR/DanaNativeReceiver-V11-AUTO-TAP-QR.apk"
 
     artifacts:
-      - $CM_EXPORT_DIR/DanaNativeReceiver-V9-AUTO-OPEN.apk
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V11-AUTO-TAP-QR.apk

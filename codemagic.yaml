@@ -1,6 +1,6 @@
 workflows:
-  dana-native-receiver-v6:
-    name: DanaNativeReceiver APK V6 SAFE BACKGROUND
+  dana-native-receiver-v8:
+    name: DanaNativeReceiver APK V8 AUTO OPEN
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -8,19 +8,21 @@ workflows:
       java: 17
 
     scripts:
-      - name: Extract V6 source
+      - name: Extract V8 source
         script: |
           set -e
           cd "$CM_BUILD_DIR"
 
-          ZIP_FILE="DanaNativeReceiver_AUTO_ON_V6.zip"
+          ZIP_FILE="DanaNativeReceiver_AUTO_OPEN_V8.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: $ZIP_FILE tidak ditemukan"
+            echo "=== FILE DI BUILD DIRECTORY ==="
+            ls -lah
             exit 1
           fi
 
-          echo "=== EXTRACT V6 SOURCE ==="
+          echo "=== EXTRACT V8 SOURCE ==="
 
           unzip -o "$ZIP_FILE" -d "$CM_BUILD_DIR"
 
@@ -45,7 +47,7 @@ workflows:
           test -f app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java
 
           echo "======================================"
-          echo "ALL REQUIRED V6 FILES FOUND"
+          echo "ALL REQUIRED V8 FILES FOUND"
           echo "======================================"
 
       - name: Configure Android SDK
@@ -117,7 +119,7 @@ workflows:
 
           "$CM_BUILD_DIR/gradle-8.9/bin/gradle" --version
 
-      - name: Build V6 APK
+      - name: Build V8 APK
         script: |
           set -e
           cd "$CM_BUILD_DIR"
@@ -125,7 +127,7 @@ workflows:
           export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
 
           echo "======================================"
-          echo "BUILD V6 APK"
+          echo "BUILD V8 APK"
           echo "======================================"
 
           "$CM_BUILD_DIR/gradle-8.9/bin/gradle" \
@@ -180,14 +182,14 @@ workflows:
 
           cp \
             "$APK_PATH" \
-            "$CM_EXPORT_DIR/DanaNativeReceiver-V6-SAFE-BACKGROUND.apk"
+            "$CM_EXPORT_DIR/DanaNativeReceiver-V8-AUTO-OPEN.apk"
 
           echo "======================================"
           echo "ARTIFACT READY"
           echo "======================================"
 
           ls -lh \
-            "$CM_EXPORT_DIR/DanaNativeReceiver-V6-SAFE-BACKGROUND.apk"
+            "$CM_EXPORT_DIR/DanaNativeReceiver-V8-AUTO-OPEN.apk"
 
     artifacts:
-      - $CM_EXPORT_DIR/DanaNativeReceiver-V6-SAFE-BACKGROUND.apk
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V8-AUTO-OPEN.apk

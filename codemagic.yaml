@@ -8,10 +8,26 @@ workflows:
       java: 17
 
     scripts:
-      - name: Validate project structure
+      - name: Locate and validate Android project
         script: |
           set -euo pipefail
-          cd "$CM_BUILD_DIR"
+
+          echo "=== Codemagic workspace ==="
+          echo "CM_BUILD_DIR=${CM_BUILD_DIR:-<unset>}"
+          pwd
+          ls -la
+
+          PROJECT_DIR="${CM_BUILD_DIR:-$PWD}"
+
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ] && [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
+            FOUND_SETTINGS="$(find "$PROJECT_DIR" -maxdepth 3 -name settings.gradle -o -name settings.gradle.kts -type f -print -quit 2>/dev/null || true)"
+            if [ -n "$FOUND_SETTINGS" ]; then
+              PROJECT_DIR="$(cd "$(dirname "$FOUND_SETTINGS")" && pwd)"
+            fi
+          fi
+
+          cd "$PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR"
 
           test -f settings.gradle
           test -f build.gradle
@@ -23,81 +39,148 @@ workflows:
           test -f app/src/main/java/id/varino/danareceiver/NtfyService.java
           test -f app/src/main/java/id/varino/danareceiver/BootReceiver.java
 
-          grep -q "com.google.mlkit:barcode-scanning:17.3.0" app/build.gradle
-          grep -q 'android:canTakeScreenshot="true"' app/src/main/res/xml/dana_accessibility_service.xml
-          grep -q 'android:canPerformGestures="true"' app/src/main/res/xml/dana_accessibility_service.xml
+          grep -Fq "com.google.mlkit:barcode-scanning:17.3.0" app/build.gradle
+          grep -Fq 'android:canTakeScreenshot="true"' app/src/main/res/xml/dana_accessibility_service.xml
+          grep -Fq 'android:canPerformGestures="true"' app/src/main/res/xml/dana_accessibility_service.xml
 
-          echo "Project V11 validation OK."
+          echo "=== Project V11 validation OK ==="
 
       - name: Configure Android SDK
         script: |
           set -euo pipefail
-          cd "$CM_BUILD_DIR"
 
-          : "${ANDROID_SDK_ROOT:?ANDROID_SDK_ROOT is not set by Codemagic}"
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          PROJECT_DIR="${CM_BUILD_DIR:-$PWD}"
 
-          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager -perm -111 2>/dev/null | head -1 || true)"
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
+            FOUND_SETTINGS="$(find "$PROJECT_DIR" -maxdepth 3 -name settings.gradle -type f -print -quit 2>/dev/null || true)"
+            if [ -n "$FOUND_SETTINGS" ]; then
+              PROJECT_DIR="$(cd "$(dirname "$FOUND_SETTINGS")" && pwd)"
+            fi
           fi
 
-          if [ -z "${SDKMANAGER:-}" ] || [ ! -x "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager tidak ditemukan di Android SDK."
+          cd "$PROJECT_DIR"
+
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+
+          if [ -z "$SDK_ROOT" ]; then
+            echo "ERROR: Android SDK path tidak tersedia."
             exit 1
           fi
 
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          echo "sdk.dir=$SDK_ROOT" > local.properties
+          echo "Android SDK: $SDK_ROOT"
 
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -perm -111 2>/dev/null | head -1 || true)"
+          fi
+
+          if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+
+            "$SDKMANAGER" \
+              "platform-tools" \
+              "platforms;android-35" \
+              "build-tools;35.0.0"
+          else
+            echo "sdkmanager tidak ditemukan; menggunakan SDK yang sudah tersedia di Codemagic."
+          fi
 
       - name: Install Gradle 8.9
         script: |
           set -euo pipefail
-          cd "$CM_BUILD_DIR"
+
+          PROJECT_DIR="${CM_BUILD_DIR:-$PWD}"
+
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
+            FOUND_SETTINGS="$(find "$PROJECT_DIR" -maxdepth 3 -name settings.gradle -type f -print -quit 2>/dev/null || true)"
+
+            if [ -n "$FOUND_SETTINGS" ]; then
+              PROJECT_DIR="$(cd "$(dirname "$FOUND_SETTINGS")" && pwd)"
+            fi
+          fi
+
+          cd "$PROJECT_DIR"
 
           GRADLE_VERSION="8.9"
-          GRADLE_DIR="$CM_BUILD_DIR/.gradle-dist/gradle-$GRADLE_VERSION"
-          GRADLE_ZIP="$CM_BUILD_DIR/.gradle-dist/gradle-$GRADLE_VERSION-bin.zip"
+          GRADLE_HOME_DIR="$PROJECT_DIR/.gradle-dist/gradle-$GRADLE_VERSION"
+          GRADLE_ZIP="$PROJECT_DIR/.gradle-dist/gradle-$GRADLE_VERSION-bin.zip"
 
-          mkdir -p "$CM_BUILD_DIR/.gradle-dist"
+          mkdir -p "$PROJECT_DIR/.gradle-dist"
 
-          if [ ! -x "$GRADLE_DIR/bin/gradle" ]; then
-            curl --fail --location --retry 3 --retry-all-errors \
+          if [ ! -x "$GRADLE_HOME_DIR/bin/gradle" ]; then
+            curl \
+              --fail \
+              --location \
+              --retry 3 \
+              --retry-all-errors \
+              --connect-timeout 30 \
+              --max-time 300 \
               -o "$GRADLE_ZIP" \
               "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
 
-            rm -rf "$GRADLE_DIR"
+            rm -rf "$GRADLE_HOME_DIR"
 
             unzip -q "$GRADLE_ZIP" \
-              -d "$CM_BUILD_DIR/.gradle-dist"
+              -d "$PROJECT_DIR/.gradle-dist"
           fi
 
-          "$GRADLE_DIR/bin/gradle" --version
+          "$GRADLE_HOME_DIR/bin/gradle" --version
 
       - name: Build debug APK
         script: |
           set -euo pipefail
-          cd "$CM_BUILD_DIR"
 
-          GRADLE="$CM_BUILD_DIR/.gradle-dist/gradle-8.9/bin/gradle"
+          PROJECT_DIR="${CM_BUILD_DIR:-$PWD}"
+
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
+            FOUND_SETTINGS="$(find "$PROJECT_DIR" -maxdepth 3 -name settings.gradle -type f -print -quit 2>/dev/null || true)"
+
+            if [ -n "$FOUND_SETTINGS" ]; then
+              PROJECT_DIR="$(cd "$(dirname "$FOUND_SETTINGS")" && pwd)"
+            fi
+          fi
+
+          cd "$PROJECT_DIR"
+
+          GRADLE="$PROJECT_DIR/.gradle-dist/gradle-8.9/bin/gradle"
+
+          test -x "$GRADLE"
 
           "$GRADLE" clean assembleDebug \
             --stacktrace \
-            --no-daemon
+            --no-daemon \
+            --console=plain
 
-      - name: Verify APK artifact
+      - name: Verify and export APK
         script: |
           set -euo pipefail
-          cd "$CM_BUILD_DIR"
 
-          APK_PATH="$CM_BUILD_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          PROJECT_DIR="${CM_BUILD_DIR:-$PWD}"
 
-          test -f "$APK_PATH"
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
+            FOUND_SETTINGS="$(find "$PROJECT_DIR" -maxdepth 3 -name settings.gradle -type f -print -quit 2>/dev/null || true)"
+
+            if [ -n "$FOUND_SETTINGS" ]; then
+              PROJECT_DIR="$(cd "$(dirname "$FOUND_SETTINGS")" && pwd)"
+            fi
+          fi
+
+          cd "$PROJECT_DIR"
+
+          APK_PATH="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK tidak ditemukan: $APK_PATH"
+
+            find "$PROJECT_DIR/app/build/outputs" \
+              -type f \
+              -maxdepth 5 \
+              -print 2>/dev/null || true
+
+            exit 1
+          fi
 
           mkdir -p "$CM_EXPORT_DIR"
 

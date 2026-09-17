@@ -14,107 +14,103 @@ workflows:
           set -e
 
           ROOT="$CM_BUILD_DIR"
-
-          echo "========================================"
-          echo " PREPARE DANA NATIVE RECEIVER V11"
-          echo "========================================"
-
           cd "$ROOT"
 
-          echo "Repository:"
+          echo "========================================"
+          echo " REPOSITORY"
+          echo "========================================"
+
           ls -lah
 
-          # Jika project Android sudah langsung berada di root,
-          # gunakan root.
+          # Jika project Android sudah langsung berada di root
           if [ -f "$ROOT/settings.gradle" ] || [ -f "$ROOT/settings.gradle.kts" ]; then
-              PROJECT_DIR="$ROOT"
+
+            PROJECT_DIR="$ROOT"
+
           else
-              echo ""
-              echo "Android project belum berada di root."
-              echo "Mencari ZIP project..."
 
-              ZIP_FILE=""
+            echo "Project Android belum berada di root."
+            echo "Mencari ZIP project..."
 
-              # Cari ZIP project DanaNativeReceiver
-              for f in "$ROOT"/*.zip; do
-                  if [ -f "$f" ]; then
-                      ZIP_FILE="$f"
-                      break
-                  fi
-              done
+            ZIP_FILE=""
 
-              if [ -z "$ZIP_FILE" ]; then
-                  echo "ERROR: ZIP project Android tidak ditemukan."
-                  exit 1
+            for f in "$ROOT"/*.zip; do
+              if [ -f "$f" ]; then
+                ZIP_FILE="$f"
+                break
               fi
+            done
 
-              echo "ZIP ditemukan:"
-              echo "$ZIP_FILE"
+            if [ -z "$ZIP_FILE" ]; then
+              echo "ERROR: ZIP project Android tidak ditemukan."
+              exit 1
+            fi
 
-              EXTRACT_DIR="$ROOT/.android_project"
+            EXTRACT_DIR="$ROOT/.android_project"
 
-              rm -rf "$EXTRACT_DIR"
-              mkdir -p "$EXTRACT_DIR"
+            rm -rf "$EXTRACT_DIR"
+            mkdir -p "$EXTRACT_DIR"
 
-              echo ""
-              echo "Extract project..."
+            echo "Extract:"
+            echo "$ZIP_FILE"
 
-              unzip -q "$ZIP_FILE" -d "$EXTRACT_DIR"
+            unzip -q "$ZIP_FILE" -d "$EXTRACT_DIR"
 
-              echo ""
-              echo "Isi hasil extract:"
-              find "$EXTRACT_DIR" -maxdepth 3 -type f | head -100
-
-              # Cari settings.gradle
-              SETTINGS_FILE="$(find "$EXTRACT_DIR" \
+            SETTINGS_FILE="$(
+              find "$EXTRACT_DIR" \
                 -type f \
                 \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-                -print -quit)"
+                -print -quit
+            )"
 
-              if [ -z "$SETTINGS_FILE" ]; then
-                  echo ""
-                  echo "ERROR: settings.gradle tidak ditemukan setelah ZIP diextract."
-                  echo ""
-                  echo "Struktur hasil extract:"
-                  find "$EXTRACT_DIR" -maxdepth 5 -print
-                  exit 1
-              fi
+            if [ -z "$SETTINGS_FILE" ]; then
 
-              PROJECT_DIR="$(cd "$(dirname "$SETTINGS_FILE")" && pwd)"
+              echo "ERROR: settings.gradle tidak ditemukan setelah extract."
+
+              echo "Struktur hasil extract:"
+              find "$EXTRACT_DIR" -maxdepth 5 -print || true
+
+              exit 1
+            fi
+
+            PROJECT_DIR="$(cd "$(dirname "$SETTINGS_FILE")" && pwd)"
+
           fi
 
           echo ""
           echo "========================================"
-          echo " PROJECT FOUND"
+          echo " PROJECT DITEMUKAN"
           echo "========================================"
+
           echo "$PROJECT_DIR"
 
           if [ ! -f "$PROJECT_DIR/settings.gradle" ] &&
              [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
-              echo "ERROR: settings.gradle tidak ditemukan."
-              exit 1
+
+            echo "ERROR: settings.gradle tidak ditemukan."
+            exit 1
+
           fi
 
           if [ ! -f "$PROJECT_DIR/app/build.gradle" ] &&
              [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-              echo "ERROR: app/build.gradle tidak ditemukan."
-              exit 1
+
+            echo "ERROR: app/build.gradle tidak ditemukan."
+            exit 1
+
           fi
 
           if [ ! -d "$PROJECT_DIR/app" ]; then
-              echo "ERROR: folder app tidak ditemukan."
-              exit 1
+
+            echo "ERROR: folder app tidak ditemukan."
+            exit 1
+
           fi
 
-          # Simpan lokasi project untuk step berikutnya.
           echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
 
           echo ""
-          echo "========================================"
-          echo " PROJECT VALID"
-          echo "========================================"
-
-          ls -lah "$PROJECT_DIR"
+          echo "PROJECT VALID."
 
       - name: Validate V11 source
         script: |
@@ -125,59 +121,73 @@ workflows:
 
           cd "$PROJECT_DIR"
 
-          echo "Project directory:"
-          echo "$PROJECT_DIR"
+          echo "========================================"
+          echo " VALIDATE V11 SOURCE"
+          echo "========================================"
 
-          echo ""
-          echo "Checking Android project..."
+          test -f app/src/main/AndroidManifest.xml
 
-          test -f "app/src/main/AndroidManifest.xml"
+          test -f app/src/main/res/xml/dana_accessibility_service.xml
 
-          test -f "app/src/main/res/xml/dana_accessibility_service.xml"
-
-          # Cari service Java/Kotlin tanpa mengunci nama file.
-          SERVICE_FILE="$(find app/src/main \
-            -type f \
-            \( -name "*.java" -o -name "*.kt" \) \
-            -print | \
-            xargs grep -l "AccessibilityService" 2>/dev/null | \
-            head -1 || true)"
+          SERVICE_FILE="$(
+            find app/src/main \
+              -type f \
+              \( -name "*.java" -o -name "*.kt" \) \
+              -print |
+            xargs grep -l "AccessibilityService" 2>/dev/null |
+            head -1 || true
+          )"
 
           if [ -z "$SERVICE_FILE" ]; then
-              echo "WARNING: AccessibilityService source tidak ditemukan."
-              echo "Build tetap dilanjutkan."
-          else
-              echo "AccessibilityService:"
-              echo "$SERVICE_FILE"
+
+            echo "ERROR: AccessibilityService tidak ditemukan."
+            exit 1
+
           fi
+
+          echo "AccessibilityService:"
+          echo "$SERVICE_FILE"
 
           echo ""
-          echo "Checking QR dependency..."
+          echo "Checking ML Kit..."
 
-          if grep -Rqs "com.google.mlkit:barcode-scanning" app; then
-              echo "ML Kit Barcode Scanner dependency ditemukan."
-          else
-              echo "WARNING: ML Kit Barcode Scanner dependency tidak ditemukan."
-              echo "Build tetap dilanjutkan."
-          fi
+          grep -Rqs \
+            "com.google.mlkit:barcode-scanning" \
+            app
 
-          echo ""
-          echo "Checking Accessibility capabilities..."
-
-          if grep -Rqs "canPerformGestures" app/src/main/res/xml; then
-              echo "Gesture capability ditemukan."
-          else
-              echo "WARNING: canPerformGestures tidak ditemukan."
-          fi
-
-          if grep -Rqs "canTakeScreenshot" app/src/main/res/xml; then
-              echo "Screenshot capability ditemukan."
-          else
-              echo "WARNING: canTakeScreenshot tidak ditemukan."
-          fi
+          echo "ML Kit ditemukan."
 
           echo ""
-          echo "V11 source validation selesai."
+          echo "Checking gesture capability..."
+
+          grep -Rqs \
+            "canPerformGestures" \
+            app/src/main/res/xml
+
+          echo "Gesture capability OK."
+
+          echo ""
+          echo "Checking screenshot capability..."
+
+          grep -Rqs \
+            "canTakeScreenshot" \
+            app/src/main/res/xml
+
+          echo "Screenshot capability OK."
+
+          echo ""
+          echo "Checking Uri import..."
+
+          grep -Rqs \
+            "import android.net.Uri;" \
+            "$SERVICE_FILE"
+
+          echo "Uri import OK."
+
+          echo ""
+          echo "========================================"
+          echo " V11 SOURCE VALIDATION OK"
+          echo "========================================"
 
       - name: Configure Android SDK
         script: |
@@ -191,8 +201,10 @@ workflows:
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
 
           if [ -z "$SDK_ROOT" ]; then
-              echo "ERROR: Android SDK tidak ditemukan."
-              exit 1
+
+            echo "ERROR: Android SDK tidak ditemukan."
+            exit 1
+
           fi
 
           echo "Android SDK:"
@@ -203,30 +215,42 @@ workflows:
           SDKMANAGER=""
 
           if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-              SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
+            SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
           else
-              SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" \
+
+            SDKMANAGER="$(
+              find "$SDK_ROOT/cmdline-tools" \
                 -type f \
                 -name sdkmanager \
                 -perm -111 \
-                2>/dev/null | head -1 || true)"
+                2>/dev/null |
+              head -1 || true
+            )"
+
           fi
 
-          if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
+          if [ -n "$SDKMANAGER" ] &&
+             [ -x "$SDKMANAGER" ]; then
 
-              echo "sdkmanager ditemukan."
+            echo "sdkmanager ditemukan."
 
-              yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            yes | "$SDKMANAGER" \
+              --licenses \
+              >/dev/null 2>&1 || true
 
-              "$SDKMANAGER" \
-                "platform-tools" \
-                "platforms;android-35" \
-                "build-tools;35.0.0" \
-                || true
+            "$SDKMANAGER" \
+              "platform-tools" \
+              "platforms;android-35" \
+              "build-tools;35.0.0" \
+              || true
 
           else
-              echo "sdkmanager tidak ditemukan."
-              echo "Menggunakan Android SDK yang sudah tersedia di Codemagic."
+
+            echo "sdkmanager tidak ditemukan."
+            echo "Menggunakan SDK Codemagic yang tersedia."
+
           fi
 
       - name: Setup Gradle
@@ -238,57 +262,74 @@ workflows:
 
           cd "$PROJECT_DIR"
 
-          echo "Checking Gradle wrapper..."
+          echo "========================================"
+          echo " SETUP GRADLE"
+          echo "========================================"
 
           if [ -x "./gradlew" ]; then
 
-              echo "Gradle wrapper ditemukan."
+            echo "Gradle wrapper ditemukan."
 
-              chmod +x ./gradlew
+            chmod +x ./gradlew
 
-              ./gradlew --version
+            echo "./gradlew" > "$ROOT/.codemagic_gradle"
 
           else
 
-              echo "Gradle wrapper tidak ditemukan."
-              echo "Installing Gradle 8.9..."
+            echo "Gradle wrapper tidak ditemukan."
+            echo "Menggunakan Gradle 8.9."
 
-              GRADLE_VERSION="8.9"
-              GRADLE_DIR="$ROOT/.gradle-dist/gradle-$GRADLE_VERSION"
-              GRADLE_ZIP="$ROOT/.gradle-dist/gradle-$GRADLE_VERSION-bin.zip"
+            VERSION="8.9"
 
-              mkdir -p "$ROOT/.gradle-dist"
+            GRADLE_DIR="$ROOT/.gradle-dist/gradle-$VERSION"
 
-              if [ ! -x "$GRADLE_DIR/bin/gradle" ]; then
+            GRADLE_ZIP="$ROOT/.gradle-dist/gradle-$VERSION-bin.zip"
 
-                  curl \
-                    --fail \
-                    --location \
-                    --retry 5 \
-                    --retry-all-errors \
-                    --connect-timeout 30 \
-                    --max-time 600 \
-                    -o "$GRADLE_ZIP" \
-                    "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+            mkdir -p "$ROOT/.gradle-dist"
 
-                  rm -rf "$GRADLE_DIR"
+            if [ ! -x "$GRADLE_DIR/bin/gradle" ]; then
 
-                  unzip -q "$GRADLE_ZIP" \
-                    -d "$ROOT/.gradle-dist"
+              curl \
+                --fail \
+                --location \
+                --retry 5 \
+                --retry-all-errors \
+                --connect-timeout 30 \
+                --max-time 600 \
+                -o "$GRADLE_ZIP" \
+                "https://services.gradle.org/distributions/gradle-$VERSION-bin.zip"
 
-              fi
+              rm -rf "$GRADLE_DIR"
 
-              "$GRADLE_DIR/bin/gradle" --version
+              unzip -q \
+                "$GRADLE_ZIP" \
+                -d "$ROOT/.gradle-dist"
 
-              echo "$GRADLE_DIR/bin/gradle" > "$ROOT/.codemagic_gradle"
+            fi
+
+            echo "$GRADLE_DIR/bin/gradle" \
+              > "$ROOT/.codemagic_gradle"
+
           fi
+
+          GRADLE="$(cat "$ROOT/.codemagic_gradle")"
+
+          chmod +x "$GRADLE" 2>/dev/null || true
+
+          echo ""
+          echo "Gradle version:"
+
+          "$GRADLE" --version
 
       - name: Build V11 APK
         script: |
           set -e
 
           ROOT="$CM_BUILD_DIR"
+
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+
+          GRADLE="$(cat "$ROOT/.codemagic_gradle")"
 
           cd "$PROJECT_DIR"
 
@@ -296,35 +337,29 @@ workflows:
           echo " BUILD DANA NATIVE RECEIVER V11"
           echo "========================================"
 
-          if [ -x "./gradlew" ]; then
-
-              GRADLE="./gradlew"
-
-          else
-
-              GRADLE="$(cat "$ROOT/.codemagic_gradle")"
-
-          fi
-
-          chmod +x "$GRADLE" 2>/dev/null || true
+          echo ""
+          echo "Project:"
+          echo "$PROJECT_DIR"
 
           echo ""
-          echo "Gradle:"
-          "$GRADLE" --version
+          echo "Running Gradle..."
 
-          echo ""
-          echo "Running clean assembleDebug..."
-
-          "$GRADLE" clean assembleDebug \
+          "$GRADLE" \
+            clean \
+            assembleDebug \
             --stacktrace \
             --no-daemon \
             --console=plain
+
+          echo ""
+          echo "Gradle build selesai."
 
       - name: Verify APK
         script: |
           set -e
 
           ROOT="$CM_BUILD_DIR"
+
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
 
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
@@ -335,28 +370,31 @@ workflows:
 
           if [ ! -f "$APK" ]; then
 
-              echo "ERROR: APK tidak ditemukan."
-              echo ""
-              echo "Mencari seluruh APK..."
+            echo "ERROR: APK tidak ditemukan."
 
-              find "$PROJECT_DIR" \
-                -type f \
-                -name "*.apk" \
-                -print \
-                2>/dev/null || true
+            echo ""
+            echo "Mencari APK yang tersedia:"
 
-              exit 1
+            find "$PROJECT_DIR" \
+              -type f \
+              -name "*.apk" \
+              -print || true
+
+            exit 1
+
           fi
 
           echo ""
           echo "APK ditemukan:"
+
           echo "$APK"
 
           ls -lh "$APK"
 
           mkdir -p "$CM_EXPORT_DIR"
 
-          cp "$APK" \
+          cp \
+            "$APK" \
             "$CM_EXPORT_DIR/DanaNativeReceiver-V11-AUTO-TAP-QR.apk"
 
           echo ""

@@ -1,6 +1,6 @@
 workflows:
-  dana-native-receiver-v17-debug-trace:
-    name: DanaNativeReceiver V17 - DEBUG PROCESS TRACE + ADAPTIVE LOADING + FIXED CENTER 4x TAP + QR DANA Kaget
+  dana-native-receiver-v18-full-debug-trace:
+    name: DanaNativeReceiver V18 - FULL DEBUG TRACE + ADAPTIVE LOADING + FIXED CENTER 4x TAP + QR DANA Kaget
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -15,28 +15,24 @@ workflows:
           cd "$ROOT"
 
           echo "=================================================="
-          echo "DANA NATIVE RECEIVER V17"
+          echo "DANA NATIVE RECEIVER V18"
           echo "PREPARE ANDROID PROJECT"
           echo "=================================================="
 
           PROJECT_DIR=""
 
-          # Prefer Android project already checked out at repository root.
           if [ -f "$ROOT/settings.gradle" ] || [ -f "$ROOT/settings.gradle.kts" ]; then
             PROJECT_DIR="$ROOT"
           else
             ZIP_FILE=""
 
-            # Prefer V17/V16 project ZIP.
-            for f in "$ROOT"/*V17*.zip "$ROOT"/*v17*.zip \
-                     "$ROOT"/*V16*.zip "$ROOT"/*v16*.zip; do
+            for f in "$ROOT"/*V18*.zip "$ROOT"/*v18*.zip "$ROOT"/*V17*.zip "$ROOT"/*v17*.zip "$ROOT"/*V16*.zip "$ROOT"/*v16*.zip; do
               if [ -f "$f" ]; then
                 ZIP_FILE="$f"
                 break
               fi
             done
 
-            # Fallback to first ZIP.
             if [ -z "$ZIP_FILE" ]; then
               for f in "$ROOT"/*.zip; do
                 if [ -f "$f" ]; then
@@ -52,40 +48,32 @@ workflows:
             fi
 
             EXTRACT_DIR="$ROOT/.android_project"
-
             rm -rf "$EXTRACT_DIR"
             mkdir -p "$EXTRACT_DIR"
 
             echo "Extracting: $ZIP_FILE"
             unzip -q "$ZIP_FILE" -d "$EXTRACT_DIR"
 
-            SETTINGS_FILE="$(find "$EXTRACT_DIR" \
-              -type f \
-              \( -name settings.gradle -o -name settings.gradle.kts \) \
-              -print -quit)"
+            SETTINGS_FILE="$(find "$EXTRACT_DIR" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
 
             if [ -z "$SETTINGS_FILE" ]; then
               echo "ERROR: settings.gradle tidak ditemukan setelah extract."
-              find "$EXTRACT_DIR" -maxdepth 6 -type f -print || true
+              find "$EXTRACT_DIR" -maxdepth 5 -type f -print || true
               exit 1
             fi
 
             PROJECT_DIR="$(cd "$(dirname "$SETTINGS_FILE")" && pwd)"
           fi
 
-          test -f "$PROJECT_DIR/settings.gradle" \
-            || test -f "$PROJECT_DIR/settings.gradle.kts"
-
-          test -f "$PROJECT_DIR/app/build.gradle" \
-            || test -f "$PROJECT_DIR/app/build.gradle.kts"
-
+          test -f "$PROJECT_DIR/settings.gradle" || test -f "$PROJECT_DIR/settings.gradle.kts"
+          test -f "$PROJECT_DIR/app/build.gradle" || test -f "$PROJECT_DIR/app/build.gradle.kts"
           test -d "$PROJECT_DIR/app"
 
           echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
 
           echo "PROJECT_DIR=$PROJECT_DIR"
 
-      - name: Validate V17 DEBUG TRACE source
+      - name: Validate V18 FULL DEBUG TRACE source
         script: |
           set -e
 
@@ -95,190 +83,105 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "VALIDATING DANA NATIVE RECEIVER V17"
-          echo "DEBUG PROCESS TRACE"
+          echo "VALIDATING DANA NATIVE RECEIVER V18 FULL DEBUG TRACE"
           echo "=================================================="
 
           MANIFEST="app/src/main/AndroidManifest.xml"
           ACCESS_XML="app/src/main/res/xml/dana_accessibility_service.xml"
           SERVICE="app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
           DEBUG_TRACE="app/src/main/java/id/varino/danareceiver/DebugTrace.java"
+          MAIN="app/src/main/java/id/varino/danareceiver/MainActivity.java"
+          NTFY="app/src/main/java/id/varino/danareceiver/NtfyService.java"
           BUILD_FILE="app/build.gradle"
 
-          # Required files
           test -f "$MANIFEST"
           test -f "$ACCESS_XML"
           test -f "$SERVICE"
           test -f "$DEBUG_TRACE"
+          test -f "$MAIN"
+          test -f "$NTFY"
           test -f "$BUILD_FILE"
 
-          echo "Required files: OK"
+          grep -Fq 'class DebugTrace' "$DEBUG_TRACE"
+          grep -Fq 'fullSnapshot' "$DEBUG_TRACE"
+          grep -Fq 'dana_debug_trace.log' "$DEBUG_TRACE"
 
-          # Accessibility service
+          grep -Fq 'LIHAT DEBUG LENGKAP' "$MAIN"
+
+          grep -Fq 'traceAccessibilityEvent' "$SERVICE"
+          grep -Fq 'DebugTrace.detail' "$SERVICE"
+          grep -Fq 'DebugTrace.detail' "$NTFY"
+
+          echo "Required files + full-debug instrumentation: OK"
+
           grep -Fq 'DanaAutoClickAccessibilityService' "$MANIFEST"
+          grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
+          grep -Fq 'android.accessibilityservice.AccessibilityService' "$MANIFEST"
 
-          grep -Fq \
-            'android.permission.BIND_ACCESSIBILITY_SERVICE' \
-            "$MANIFEST"
-
-          grep -Fq \
-            'android.accessibilityservice.AccessibilityService' \
-            "$MANIFEST"
-
-          grep -Fq \
-            'android:canRetrieveWindowContent="true"' \
-            "$ACCESS_XML"
-
-          grep -Fq \
-            'android:canPerformGestures="true"' \
-            "$ACCESS_XML"
-
-          grep -Fq \
-            'android:canTakeScreenshot="true"' \
-            "$ACCESS_XML"
+          grep -Fq 'android:canRetrieveWindowContent="true"' "$ACCESS_XML"
+          grep -Fq 'android:canPerformGestures="true"' "$ACCESS_XML"
+          grep -Fq 'android:canTakeScreenshot="true"' "$ACCESS_XML"
 
           echo "AccessibilityService manifest/capabilities: OK"
 
-          # DebugTrace class
-          grep -Fq 'class DebugTrace' "$DEBUG_TRACE"
+          grep -Fq 'DebugTrace.success(DanaAutoClickAccessibilityService.this, "TAP "' "$SERVICE"
 
-          grep -Fq 'success(' "$DEBUG_TRACE"
+          grep -Fq 'DebugTrace.success(DanaAutoClickAccessibilityService.this, "Hint amplop hilang setelah TAP "' "$SERVICE"
 
-          grep -Fq 'fail(' "$DEBUG_TRACE"
+          grep -Fq 'DebugTrace.fail(DanaAutoClickAccessibilityService.this, "TAP "' "$SERVICE"
 
-          echo "DebugTrace helper: OK"
+          grep -Fq 'DebugTrace.fail(DanaAutoClickAccessibilityService.this, "QR screenshot: HardwareBuffer=null")' "$SERVICE"
 
-          # IMPORTANT:
-          # Inside GestureResultCallback, `this` refers to callback object.
-          # Therefore AccessibilityService.this must be used.
+          grep -Fq 'DebugTrace.fail(DanaAutoClickAccessibilityService.this, "QR screenshot: bitmap conversion gagal")' "$SERVICE"
 
-          grep -Fq \
-            'DebugTrace.success(DanaAutoClickAccessibilityService.this, "TAP "' \
-            "$SERVICE"
+          if grep -nE 'new (GestureResultCallback|TakeScreenshotCallback)\(\) \{' "$SERVICE" >/dev/null; then
+            if grep -nE 'DebugTrace\.[a-zA-Z]+\(this,.*' "$SERVICE" | grep -E '^[0-9]+:' | grep -E '30[0-9]|31[0-9]|32[0-9]|33[0-9]|80[0-9]|81[0-9]|82[0-9]|83[0-9]|84[0-9]' >/dev/null; then
+              echo "ERROR: callback-context DebugTrace call still uses this."
+              exit 1
+            fi
+          fi
 
-          grep -Fq \
-            'DebugTrace.success(DanaAutoClickAccessibilityService.this, "Hint amplop hilang setelah TAP "' \
-            "$SERVICE"
+          echo "Gesture/QR callback Context preflight: OK"
 
-          grep -Fq \
-            'DebugTrace.fail(DanaAutoClickAccessibilityService.this, "TAP "' \
-            "$SERVICE"
-
-          echo "Gesture callback DebugTrace context fix: OK"
-
-          # QR scanner
-          grep -Fq \
-            'com.google.mlkit:barcode-scanning' \
-            "$BUILD_FILE"
-
-          grep -Fq \
-            'Barcode.FORMAT_QR_CODE' \
-            "$SERVICE"
-
-          grep -Fq \
-            'android.net.Uri' \
-            "$SERVICE"
+          grep -Fq 'com.google.mlkit:barcode-scanning' "$BUILD_FILE"
+          grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
+          grep -Fq 'android.net.Uri' "$SERVICE"
 
           echo "ML Kit QR scanner: OK"
 
-          # Adaptive loading/direct tap
-          grep -Fq \
-            'scheduleDirectEnvelopeTap' \
-            "$SERVICE"
+          grep -Fq 'scheduleDirectEnvelopeTap' "$SERVICE"
+          grep -Fq 'startDirectTapSequence' "$SERVICE"
+          grep -Fq 'dispatchNextDirectTap' "$SERVICE"
 
-          grep -Fq \
-            'startDirectTapSequence' \
-            "$SERVICE"
+          grep -Fq 'DIRECT_TAP_MAX_ATTEMPTS' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_START_DELAY_MS' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_ATTEMPT_GAP_MS' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_FALLBACK_AFTER_MS' "$SERVICE"
 
-          grep -Fq \
-            'dispatchNextDirectTap' \
-            "$SERVICE"
+          grep -Fq 'danaOpenAt' "$SERVICE"
+          grep -Fq 'danaLoadingWaitLogged' "$SERVICE"
+          grep -Fq 'dispatchGesture' "$SERVICE"
+          grep -Fq 'getRealMetrics' "$SERVICE"
 
-          grep -Fq \
-            'DIRECT_TAP_MAX_ATTEMPTS' \
-            "$SERVICE"
-
-          grep -Fq \
-            'DIRECT_TAP_START_DELAY_MS' \
-            "$SERVICE"
-
-          grep -Fq \
-            'DIRECT_TAP_ATTEMPT_GAP_MS' \
-            "$SERVICE"
-
-          grep -Fq \
-            'DIRECT_TAP_FALLBACK_AFTER_MS' \
-            "$SERVICE"
-
-          grep -Fq \
-            'danaOpenAt' \
-            "$SERVICE"
-
-          grep -Fq \
-            'danaLoadingWaitLogged' \
-            "$SERVICE"
-
-          grep -Fq \
-            'dispatchGesture' \
-            "$SERVICE"
-
-          grep -Fq \
-            'getRealMetrics' \
-            "$SERVICE"
-
-          grep -Fq \
-            'ENVELOPE_TAP_X = 0.50f' \
-            "$SERVICE"
-
-          grep -Fq \
-            'ENVELOPE_TAP_Y = 0.43f' \
-            "$SERVICE"
+          grep -Fq 'ENVELOPE_TAP_X = 0.50f' "$SERVICE"
+          grep -Fq 'ENVELOPE_TAP_Y = 0.43f' "$SERVICE"
 
           echo "Adaptive loading + fixed-center 4x direct tap: OK"
 
-          # Active package helper
-          grep -Fq \
-            'private String getActivePackageSafely()' \
-            "$SERVICE"
+          grep -Fq 'private String getActivePackageSafely()' "$SERVICE"
 
           echo "Active-package guard helper: OK"
 
-          # Screenshot
-          grep -Fq \
-            'takeScreenshot' \
-            "$SERVICE"
-
-          grep -Fq \
-            'TakeScreenshotCallback' \
-            "$SERVICE"
+          grep -Fq 'takeScreenshot' "$SERVICE"
+          grep -Fq 'TakeScreenshotCallback' "$SERVICE"
 
           echo "Screenshot QR path: OK"
 
-          # Pending claim / DANA guards
-          grep -Fq \
-            'id.dana' \
-            "$SERVICE"
-
-          grep -Fq \
-            'hasPendingClaim' \
-            "$SERVICE"
-
-          grep -Fq \
-            'awaitingClaimResult' \
-            "$SERVICE"
+          grep -Fq 'id.dana' "$SERVICE"
+          grep -Fq 'hasPendingClaim' "$SERVICE"
+          grep -Fq 'awaitingClaimResult' "$SERVICE"
 
           echo "DANA/pending-claim guards: OK"
-
-          # Debug trace references
-          grep -Fq \
-            'DebugTrace.' \
-            "$SERVICE"
-
-          echo "Debug process trace references: OK"
-
-          # --------------------------------------------------
-          # BASIC JAVA DELIMITER VALIDATION
-          # --------------------------------------------------
 
           python3 - <<'PY'
           from pathlib import Path
@@ -312,14 +215,12 @@ workflows:
               c = s[i]
               n = s[i + 1] if i + 1 < len(s) else ""
 
-              # Line comment
               if in_line_comment:
                   if c == "\n":
                       in_line_comment = False
                   i += 1
                   continue
 
-              # Block comment
               if in_block_comment:
                   if c == "*" and n == "/":
                       in_block_comment = False
@@ -329,7 +230,6 @@ workflows:
                   i += 1
                   continue
 
-              # String
               if in_string:
                   if escape:
                       escape = False
@@ -341,7 +241,6 @@ workflows:
                   i += 1
                   continue
 
-              # Char
               if in_char:
                   if escape:
                       escape = False
@@ -353,7 +252,6 @@ workflows:
                   i += 1
                   continue
 
-              # Start comments
               if c == "/" and n == "/":
                   in_line_comment = True
                   i += 2
@@ -364,41 +262,30 @@ workflows:
                   i += 2
                   continue
 
-              # Start string
               if c == '"':
                   in_string = True
                   i += 1
                   continue
 
-              # Start char
               if c == "'":
                   in_char = True
                   i += 1
                   continue
 
-              # Opening delimiters
               if c in pairs:
                   stack.append(pairs[c])
 
-              # Closing delimiters
               elif c in closing:
 
                   if not stack or stack.pop() != c:
                       raise SystemExit(
-                          f"Java delimiter mismatch "
-                          f"at character {i}: {c}"
+                          f"Java delimiter mismatch at character {i}: {c}"
                       )
 
               i += 1
 
-          if in_string:
-              raise SystemExit("Java string left open")
-
-          if in_char:
-              raise SystemExit("Java char literal left open")
-
-          if in_block_comment:
-              raise SystemExit("Java block comment left open")
+          if in_string or in_char or in_block_comment:
+              raise SystemExit("Java lexical state left open")
 
           if stack:
               raise SystemExit(
@@ -409,7 +296,14 @@ workflows:
           PY
 
           echo "=================================================="
-          echo "V17 DEBUG TRACE SOURCE VALIDATION OK"
+
+          grep -Fq "versionCode 19" "$BUILD_FILE"
+          grep -Fq "1.18-full-debug-trace" "$BUILD_FILE"
+
+          echo "Version metadata: V18 / versionCode 19 OK"
+
+          echo "V18 FULL DEBUG TRACE SOURCE VALIDATION OK"
+
           echo "=================================================="
 
       - name: Configure Android SDK
@@ -430,28 +324,19 @@ workflows:
 
           echo "sdk.dir=$SDK_ROOT" > local.properties
 
-          echo "ANDROID SDK:"
-          echo "$SDK_ROOT"
-
           SDKMANAGER=""
 
-          if [ -x \
-            "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
-          ]; then
-
+          if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
             SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-
           else
-
             SDKMANAGER="$(
               find "$SDK_ROOT/cmdline-tools" \
                 -type f \
                 -name sdkmanager \
                 -perm -111 \
                 2>/dev/null \
-                | head -1 \
+                | head -1 || true
             )"
-
           fi
 
           if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
@@ -463,11 +348,6 @@ workflows:
               "platform-tools" \
               "platforms;android-35" \
               "build-tools;35.0.0"
-
-          else
-
-            echo "WARNING: sdkmanager tidak ditemukan."
-            echo "Melanjutkan menggunakan SDK yang tersedia."
 
           fi
 
@@ -496,7 +376,7 @@ workflows:
 
           else
 
-            VERSION="8.9"
+            VERSION="8.14.1"
 
             DIST_ROOT="$ROOT/.gradle-dist"
 
@@ -507,8 +387,6 @@ workflows:
             mkdir -p "$DIST_ROOT"
 
             if [ ! -x "$GRADLE_HOME/bin/gradle" ]; then
-
-              echo "Downloading Gradle $VERSION..."
 
               curl \
                 --fail \
@@ -540,7 +418,7 @@ workflows:
           echo "Using Gradle:"
           "$GRADLE" --version
 
-      - name: Build V17 DEBUG TRACE APK
+      - name: Build V18 FULL DEBUG TRACE APK
         script: |
           set -e
 
@@ -557,8 +435,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "BUILD DANA NATIVE RECEIVER V17"
-          echo "DEBUG PROCESS TRACE"
+          echo "BUILD DANA NATIVE RECEIVER V18 FULL DEBUG TRACE"
           echo "=================================================="
 
           "$GRADLE" \
@@ -568,7 +445,7 @@ workflows:
             --no-daemon \
             --console=plain
 
-      - name: Verify and export V17 DEBUG TRACE APK
+      - name: Verify and export V18 FULL DEBUG TRACE APK
         script: |
           set -e
 
@@ -580,13 +457,11 @@ workflows:
 
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
-          OUTPUT="$CM_EXPORT_DIR/DanaNativeReceiver-V17-DEBUG-TRACE-ADAPTIVE-LOADING-4TAP-QR.apk"
+          OUTPUT="$CM_EXPORT_DIR/DanaNativeReceiver-V18-DEBUG-TRACE-ADAPTIVE-LOADING-4TAP-QR.apk"
 
           if [ ! -f "$APK" ]; then
 
             echo "ERROR: APK tidak ditemukan setelah build."
-
-            echo "Searching APK files..."
 
             find "$PROJECT_DIR" \
               -type f \
@@ -601,12 +476,11 @@ workflows:
           cp "$APK" "$OUTPUT"
 
           echo "=================================================="
-          echo "V17 DEBUG TRACE APK EXPORT OK"
+          echo "V18 FULL DEBUG TRACE APK EXPORT OK"
           echo "=================================================="
 
           ls -lh "$OUTPUT"
 
-          echo ""
           echo "SHA-256:"
 
           if command -v shasum >/dev/null 2>&1; then
@@ -619,8 +493,5 @@ workflows:
 
           fi
 
-          echo ""
-          echo "APK READY."
-
     artifacts:
-      - $CM_EXPORT_DIR/DanaNativeReceiver-V17-DEBUG-TRACE-ADAPTIVE-LOADING-4TAP-QR.apk
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V18-DEBUG-TRACE-ADAPTIVE-LOADING-4TAP-QR.apk

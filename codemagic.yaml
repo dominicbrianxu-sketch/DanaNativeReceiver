@@ -1,6 +1,6 @@
 workflows:
-  dana-native-receiver-v24-calibrated-envelope-tap:
-    name: DanaNativeReceiver V24 - FULL DEBUG TRACE + ADAPTIVE LOADING + CALIBRATED ENVELOPE 10x LEARNING TAP + QR DANA Kaget
+  dana-native-receiver-v25-tap-buta-fix:
+    name: DanaNativeReceiver V25 - TAP BUTA FIX (per-tap shade re-check + quiet status notif)
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -15,30 +15,26 @@ workflows:
           cd "$ROOT"
 
           echo "=================================================="
-          echo "DANA NATIVE RECEIVER V24"
+          echo "DANA NATIVE RECEIVER V25"
           echo "PREPARE ANDROID PROJECT"
           echo "=================================================="
 
           PROJECT_DIR=""
 
-          # Prefer an Android project already checked out at repository root.
           if [ -f "$ROOT/settings.gradle" ] || [ -f "$ROOT/settings.gradle.kts" ]; then
             PROJECT_DIR="$ROOT"
           else
-            # If the repository contains a project ZIP, prefer V24 only.
             ZIP_FILE=""
-            for f in "$ROOT"/*V24*.zip "$ROOT"/*v24*.zip; do
+            for f in "$ROOT"/*V25*.zip "$ROOT"/*v25*.zip; do
               if [ -f "$f" ]; then
                 ZIP_FILE="$f"
                 break
               fi
             done
 
-            # Never silently fall back to an older project ZIP.
-            # A missing V19 ZIP must fail here instead of accidentally building V18/V17.
             if [ -z "$ZIP_FILE" ]; then
-              echo "ERROR: V24 Android project ZIP tidak ditemukan."
-              echo "Pastikan DanaNativeReceiver_V24*.zip ada di repository root."
+              echo "ERROR: V25 Android project ZIP tidak ditemukan."
+              echo "Pastikan DanaNativeReceiver_V25*.zip ada di repository root."
               exit 1
             fi
 
@@ -68,7 +64,7 @@ workflows:
           echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
           echo "PROJECT_DIR=$PROJECT_DIR"
 
-      - name: Validate V24 10-POINT LEARNING ENVELOPE TAP source
+      - name: Validate V25 TAP BUTA FIX source
         script: |
           set -e
           ROOT="$CM_BUILD_DIR"
@@ -76,7 +72,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "VALIDATING DANA NATIVE RECEIVER V24 FULL DEBUG TRACE"
+          echo "VALIDATING DANA NATIVE RECEIVER V25 TAP BUTA FIX"
           echo "=================================================="
 
           MANIFEST="app/src/main/AndroidManifest.xml"
@@ -87,7 +83,6 @@ workflows:
           NTFY="app/src/main/java/id/varino/danareceiver/NtfyService.java"
           BUILD_FILE="app/build.gradle"
 
-          # Required project files.
           test -f "$MANIFEST"
           test -f "$ACCESS_XML"
           test -f "$SERVICE"
@@ -104,7 +99,6 @@ workflows:
           grep -Fq 'DebugTrace.detail' "$NTFY"
           echo "Required files + full-debug instrumentation: OK"
 
-          # Accessibility service registration/capabilities.
           grep -Fq 'DanaAutoClickAccessibilityService' "$MANIFEST"
           grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
           grep -Fq 'android.accessibilityservice.AccessibilityService' "$MANIFEST"
@@ -113,18 +107,12 @@ workflows:
           grep -Fq 'android:canTakeScreenshot="true"' "$ACCESS_XML"
           echo "AccessibilityService manifest/capabilities: OK"
 
-          # GestureResultCallback has its own `this`; DebugTrace must receive the
-          # AccessibilityService instance, not the callback object.
           grep -Fq 'DebugTrace.success(DanaAutoClickAccessibilityService.this, "TAP "' "$SERVICE"
           grep -Fq 'DebugTrace.success(DanaAutoClickAccessibilityService.this,' "$SERVICE"
           grep -Fq 'DebugTrace.fail(DanaAutoClickAccessibilityService.this, "TAP "' "$SERVICE"
           grep -Fq 'DebugTrace.fail(DanaAutoClickAccessibilityService.this, "QR screenshot: HardwareBuffer=null")' "$SERVICE"
           grep -Fq 'DebugTrace.fail(DanaAutoClickAccessibilityService.this, "QR screenshot: bitmap conversion gagal")' "$SERVICE"
 
-          # Verify callback blocks themselves, rather than using brittle line-number
-          # filters. `this` is valid in the outer service and in Java lambdas, but
-          # inside anonymous GestureResultCallback/TakeScreenshotCallback classes
-          # it refers to the callback object and must NOT be passed as Context.
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -206,13 +194,11 @@ workflows:
 
           echo "Gesture/QR callback Context preflight: OK"
 
-          # QR scanner.
           grep -Fq 'com.google.mlkit:barcode-scanning' "$BUILD_FILE"
           grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
           grep -Fq 'android.net.Uri' "$SERVICE"
           echo "ML Kit QR scanner: OK"
 
-          # Adaptive-loading/direct-tap implementation.
           grep -Fq 'scheduleDirectEnvelopeTap' "$SERVICE"
           grep -Fq 'startDirectTapSequence' "$SERVICE"
           grep -Fq 'dispatchNextDirectTap' "$SERVICE"
@@ -231,32 +217,32 @@ workflows:
           grep -Fq 'ENVELOPE_TAP_YS' "$SERVICE"
           grep -Fq 'GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE' "$SERVICE"
           grep -Fq 'isDanaMainReadyClass' "$SERVICE"
-          grep -Fq '0.50f, 0.46f, 0.54f, 0.50f, 0.46f' "$SERVICE"
-          grep -Fq '0.445f, 0.445f, 0.445f, 0.405f, 0.405f' "$SERVICE"
           grep -Fq 'TAP_VERIFY_DELAY_MS' "$SERVICE"
           grep -Fq 'VERIFY: envelopeHintVisible=' "$SERVICE"
           grep -Fq 'hint masih ada -> lanjut titik' "$SERVICE"
-
           echo "10-point calibrated + per-tap UI verification + permanent learning: OK"
 
-          # Guard helper is required before Gradle compilation.
-          # Require the actual method declaration before Gradle compilation.
+          grep -Fq 'shadeWaitRetries' "$SERVICE"
+          grep -Fq 'MAX_SHADE_WAIT_RETRIES' "$SERVICE"
+          grep -Fq 'SHADE_WAIT_RETRY_DELAY_MS' "$SERVICE"
+          grep -Fq 'tap TIDAK ditembakkan buta' "$SERVICE"
+          grep -Fq 'RESULT_CHANNEL_QUIET' "$SERVICE"
+          grep -Fq 'boolean quiet = directTapSequenceActive' "$SERVICE"
+          grep -Fq 'ch.enableVibration(false)' "$SERVICE"
+          echo "V25 tap-buta fix (per-tap shade re-check + quiet status notif): OK"
+
           grep -Fq 'private String getActivePackageSafely()' "$SERVICE"
           echo "Active-package guard helper: OK"
 
-          # Screenshot path is retained for Telegram QR scanning.
           grep -Fq 'takeScreenshot' "$SERVICE"
           grep -Fq 'TakeScreenshotCallback' "$SERVICE"
           echo "Screenshot QR path: OK"
 
-          # Pending-claim/DANA guards.
           grep -Fq 'id.dana' "$SERVICE"
           grep -Fq 'hasPendingClaim' "$SERVICE"
           grep -Fq 'awaitingClaimResult' "$SERVICE"
           echo "DANA/pending-claim guards: OK"
 
-          # Basic Java delimiter validation. This catches accidental missing
-          # braces/parentheses/brackets before Gradle is started.
           python3 - <<'PY'
           from pathlib import Path
 
@@ -342,16 +328,16 @@ workflows:
           PY
 
           echo "=================================================="
-          grep -Fq "versionCode 25" "$BUILD_FILE"
-          grep -Fq "1.24-10point-learning-envelope-tap" "$BUILD_FILE"
+          grep -Fq "versionCode 26" "$BUILD_FILE"
+          grep -Fq "1.25-tap-buta-fix" "$BUILD_FILE"
           grep -Fq "DIRECT_TAP_MAX_ATTEMPTS = 10" "$SERVICE"
           grep -Fq "saveLearnedTapPoint" "$SERVICE"
           grep -Fq "buildTapOrder" "$SERVICE"
           grep -Fq "learned_envelope_x" "$SERVICE"
           grep -Fq "learned_envelope_y" "$SERVICE"
-          echo "Version metadata: V24 / versionCode 25 OK"
+          echo "Version metadata: V25 / versionCode 26 OK"
 
-          echo "V24 CALIBRATED ENVELOPE TAP SOURCE VALIDATION OK"
+          echo "V25 TAP BUTA FIX SOURCE VALIDATION OK"
           echo "=================================================="
 
       - name: Configure Android SDK
@@ -418,7 +404,7 @@ workflows:
           chmod +x "$GRADLE" 2>/dev/null || true
           "$GRADLE" --version
 
-      - name: Build V24 CALIBRATED ENVELOPE TAP APK
+      - name: Build V25 TAP BUTA FIX APK
         script: |
           set -e
           ROOT="$CM_BUILD_DIR"
@@ -427,18 +413,18 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "BUILD DANA NATIVE RECEIVER V24 FULL DEBUG TRACE"
+          echo "BUILD DANA NATIVE RECEIVER V25 TAP BUTA FIX"
           echo "=================================================="
 
           "$GRADLE" clean assembleDebug --stacktrace --no-daemon --console=plain
 
-      - name: Verify and export V24 CALIBRATED ENVELOPE TAP APK
+      - name: Verify and export V25 TAP BUTA FIX APK
         script: |
           set -e
           ROOT="$CM_BUILD_DIR"
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-          OUTPUT="$CM_EXPORT_DIR/DanaNativeReceiver-V24-DEBUG-TAP-4POINT-VERIFIED-ADAPTIVE-LOADING-QR.apk"
+          OUTPUT="$CM_EXPORT_DIR/DanaNativeReceiver-V25-TAP-BUTA-FIX-DEBUG.apk"
 
           if [ ! -f "$APK" ]; then
             echo "ERROR: APK tidak ditemukan setelah build."
@@ -450,7 +436,7 @@ workflows:
           cp "$APK" "$OUTPUT"
 
           echo "=================================================="
-          echo "V24 10-POINT LEARNING ENVELOPE TAP APK EXPORT OK"
+          echo "V25 TAP BUTA FIX APK EXPORT OK"
           echo "=================================================="
           ls -lh "$OUTPUT"
 
@@ -462,4 +448,4 @@ workflows:
           fi
 
     artifacts:
-      - $CM_EXPORT_DIR/DanaNativeReceiver-V24-DEBUG-TAP-4POINT-VERIFIED-ADAPTIVE-LOADING-QR.apk
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V25-TAP-BUTA-FIX-DEBUG.apk

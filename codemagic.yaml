@@ -1,6 +1,6 @@
 workflows:
   dana-native-receiver-v16:
-    name: DanaNativeReceiver V16 - ADAPTIVE LOADING + 4x TAP + QR DANA Kaget
+    name: DanaNativeReceiver V16 - ADAPTIVE LOADING + FIXED CENTER 4x TAP + QR DANA Kaget
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -26,18 +26,9 @@ workflows:
 
           PROJECT_DIR=""
 
-          # --------------------------------------------------------
-          # Project langsung berada di root repository
-          # --------------------------------------------------------
           if [ -f "$ROOT/settings.gradle" ] || [ -f "$ROOT/settings.gradle.kts" ]; then
-
             PROJECT_DIR="$ROOT"
-
           else
-
-            # ------------------------------------------------------
-            # Cari ZIP project Android
-            # ------------------------------------------------------
             ZIP_FILE=""
 
             for f in "$ROOT"/*.zip; do
@@ -48,9 +39,7 @@ workflows:
             done
 
             if [ -z "$ZIP_FILE" ]; then
-              echo "ERROR: Project Android tidak ditemukan."
-              echo "Pastikan settings.gradle berada di root"
-              echo "atau upload ZIP project Android."
+              echo "ERROR: Android project tidak ditemukan."
               exit 1
             fi
 
@@ -59,10 +48,8 @@ workflows:
             rm -rf "$EXTRACT_DIR"
             mkdir -p "$EXTRACT_DIR"
 
-            echo "Project ZIP:"
+            echo "Extracting project:"
             echo "$ZIP_FILE"
-
-            echo "Extracting project..."
 
             unzip -q "$ZIP_FILE" -d "$EXTRACT_DIR"
 
@@ -74,49 +61,33 @@ workflows:
             )"
 
             if [ -z "$SETTINGS_FILE" ]; then
-
-              echo "ERROR: settings.gradle tidak ditemukan."
-
-              find "$EXTRACT_DIR" \
-                -maxdepth 6 \
-                -type f \
-                -print || true
-
+              echo "ERROR: settings.gradle tidak ditemukan setelah extract."
+              find "$EXTRACT_DIR" -maxdepth 6 -type f -print || true
               exit 1
             fi
 
             PROJECT_DIR="$(cd "$(dirname "$SETTINGS_FILE")" && pwd)"
-
           fi
 
           echo ""
           echo "PROJECT_DIR=$PROJECT_DIR"
           echo ""
 
-          # --------------------------------------------------------
-          # Validasi project
-          # --------------------------------------------------------
           if [ ! -f "$PROJECT_DIR/settings.gradle" ] &&
              [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
-
             echo "ERROR: settings.gradle tidak ditemukan."
             exit 1
-
           fi
 
           if [ ! -f "$PROJECT_DIR/app/build.gradle" ] &&
              [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-
             echo "ERROR: app/build.gradle tidak ditemukan."
             exit 1
-
           fi
 
           if [ ! -d "$PROJECT_DIR/app" ]; then
-
             echo "ERROR: folder app tidak ditemukan."
             exit 1
-
           fi
 
           echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
@@ -152,17 +123,19 @@ workflows:
 
           ACCESS_XML="app/src/main/res/xml/dana_accessibility_service.xml"
 
-          SERVICE_FILE="app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
+          SERVICE="app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
+
+          BUILD_FILE="app/build.gradle"
 
           # --------------------------------------------------------
           # Required files
           # --------------------------------------------------------
           test -f "$MANIFEST"
           test -f "$ACCESS_XML"
-          test -f "$SERVICE_FILE"
+          test -f "$SERVICE"
+          test -f "$BUILD_FILE"
 
-          echo "Service:"
-          echo "$SERVICE_FILE"
+          echo "Required files: OK"
 
           # --------------------------------------------------------
           # AccessibilityService manifest
@@ -196,131 +169,119 @@ workflows:
             'android:canTakeScreenshot="true"' \
             "$ACCESS_XML"
 
-          echo "canRetrieveWindowContent: OK"
-          echo "canPerformGestures: OK"
-          echo "canTakeScreenshot: OK"
+          echo "Accessibility capabilities: OK"
 
           # --------------------------------------------------------
-          # ML Kit QR
+          # ML Kit QR scanner
           # --------------------------------------------------------
-          grep -Rqs \
-            "com.google.mlkit:barcode-scanning" \
-            app
+          grep -Fq \
+            'com.google.mlkit:barcode-scanning' \
+            "$BUILD_FILE"
 
           grep -Fq \
-            "Barcode.FORMAT_QR_CODE" \
-            "$SERVICE_FILE"
+            'Barcode.FORMAT_QR_CODE' \
+            "$SERVICE"
 
-          echo "ML Kit QR Scanner: OK"
+          echo "ML Kit QR scanner: OK"
 
           # --------------------------------------------------------
           # V16 adaptive loading
           # --------------------------------------------------------
           grep -Fq \
-            "scheduleDirectEnvelopeTap" \
-            "$SERVICE_FILE"
+            'scheduleDirectEnvelopeTap' \
+            "$SERVICE"
 
           grep -Fq \
-            "performDirectEnvelopeTap" \
-            "$SERVICE_FILE"
+            'startDirectTapSequence' \
+            "$SERVICE"
 
           grep -Fq \
-            "DIRECT_TAP_MAX_ATTEMPTS" \
-            "$SERVICE_FILE"
+            'dispatchNextDirectTap' \
+            "$SERVICE"
 
           grep -Fq \
-            "DIRECT_TAP_WAIT_TIMEOUT_MS" \
-            "$SERVICE_FILE"
+            'DIRECT_TAP_MAX_ATTEMPTS' \
+            "$SERVICE"
 
           grep -Fq \
-            "DIRECT_TAP_POLL_INTERVAL_MS" \
-            "$SERVICE_FILE"
+            'DIRECT_TAP_START_DELAY_MS' \
+            "$SERVICE"
 
-          echo "Adaptive loading logic: OK"
+          grep -Fq \
+            'DIRECT_TAP_ATTEMPT_GAP_MS' \
+            "$SERVICE"
+
+          grep -Fq \
+            'DIRECT_TAP_FALLBACK_AFTER_MS' \
+            "$SERVICE"
+
+          grep -Fq \
+            'danaOpenAt' \
+            "$SERVICE"
+
+          grep -Fq \
+            'danaLoadingWaitLogged' \
+            "$SERVICE"
+
+          echo "Adaptive loading + direct tap logic: OK"
 
           # --------------------------------------------------------
-          # Direct gesture
+          # Direct gesture + fixed center
           # --------------------------------------------------------
           grep -Fq \
-            "dispatchGesture" \
-            "$SERVICE_FILE"
+            'dispatchGesture' \
+            "$SERVICE"
 
           grep -Fq \
-            "getRealMetrics" \
-            "$SERVICE_FILE"
+            'getRealMetrics' \
+            "$SERVICE"
 
           grep -Fq \
-            "ENVELOPE_TAP_X = 0.50f" \
-            "$SERVICE_FILE"
+            'ENVELOPE_TAP_X = 0.50f' \
+            "$SERVICE"
 
           grep -Fq \
-            "ENVELOPE_TAP_Y = 0.43f" \
-            "$SERVICE_FILE"
+            'ENVELOPE_TAP_Y = 0.43f' \
+            "$SERVICE"
 
-          echo "Fixed-center direct tap: OK"
+          echo "Fixed-center gesture: OK"
 
           # --------------------------------------------------------
-          # 4 tap sequence
+          # Screenshot QR path
           # --------------------------------------------------------
           grep -Fq \
-            "TAP 1/4" \
-            "$SERVICE_FILE"
+            'takeScreenshot' \
+            "$SERVICE"
 
           grep -Fq \
-            "TAP 2/4" \
-            "$SERVICE_FILE"
+            'TakeScreenshotCallback' \
+            "$SERVICE"
 
-          grep -Fq \
-            "TAP 3/4" \
-            "$SERVICE_FILE"
-
-          grep -Fq \
-            "TAP 4/4" \
-            "$SERVICE_FILE"
-
-          echo "4x TAP sequence: OK"
+          echo "Screenshot QR path: OK"
 
           # --------------------------------------------------------
-          # QR screenshot
+          # Safety guards
           # --------------------------------------------------------
           grep -Fq \
-            "takeScreenshot" \
-            "$SERVICE_FILE"
+            'id.dana' \
+            "$SERVICE"
 
           grep -Fq \
-            "TakeScreenshotCallback" \
-            "$SERVICE_FILE"
-
-          echo "QR screenshot path: OK"
-
-          # --------------------------------------------------------
-          # DANA foreground guard
-          # --------------------------------------------------------
-          grep -Fq \
-            "id.dana" \
-            "$SERVICE_FILE"
+            'getActivePackageSafely' \
+            "$SERVICE"
 
           grep -Fq \
-            "getActivePackageSafely" \
-            "$SERVICE_FILE"
-
-          echo "DANA foreground guard: OK"
-
-          # --------------------------------------------------------
-          # Pending claim guard
-          # --------------------------------------------------------
-          grep -Fq \
-            "hasPendingClaim" \
-            "$SERVICE_FILE"
+            'hasPendingClaim' \
+            "$SERVICE"
 
           grep -Fq \
-            "awaitingClaimResult" \
-            "$SERVICE_FILE"
+            'awaitingClaimResult' \
+            "$SERVICE"
 
-          echo "Pending claim guard: OK"
+          echo "DANA/pending-claim guards: OK"
 
           # --------------------------------------------------------
-          # Java delimiter validation
+          # Java delimiter check
           # --------------------------------------------------------
           python3 - <<'PY'
           from pathlib import Path
@@ -330,7 +291,7 @@ workflows:
               "DanaAutoClickAccessibilityService.java"
           )
 
-          text = p.read_text(encoding="utf-8")
+          s = p.read_text(encoding="utf-8")
 
           pairs = {
               "{": "}",
@@ -340,39 +301,36 @@ workflows:
 
           stack = []
 
-          in_string = False
-          in_char = False
-          in_line_comment = False
-          in_block_comment = False
+          string = False
+          char = False
+          line = False
+          block = False
           escape = False
 
           i = 0
 
-          while i < len(text):
+          while i < len(s):
 
-              c = text[i]
-              n = text[i + 1] if i + 1 < len(text) else ""
+              c = s[i]
+              n = s[i + 1] if i + 1 < len(s) else ""
 
-              if in_line_comment:
-
+              if line:
                   if c == "\n":
-                      in_line_comment = False
+                      line = False
 
                   i += 1
                   continue
 
-              if in_block_comment:
-
+              if block:
                   if c == "*" and n == "/":
-                      in_block_comment = False
+                      block = False
                       i += 2
                       continue
 
                   i += 1
                   continue
 
-              if in_string:
-
+              if string:
                   if escape:
                       escape = False
 
@@ -380,13 +338,12 @@ workflows:
                       escape = True
 
                   elif c == '"':
-                      in_string = False
+                      string = False
 
                   i += 1
                   continue
 
-              if in_char:
-
+              if char:
                   if escape:
                       escape = False
 
@@ -394,55 +351,46 @@ workflows:
                       escape = True
 
                   elif c == "'":
-                      in_char = False
+                      char = False
 
                   i += 1
                   continue
 
               if c == "/" and n == "/":
-
-                  in_line_comment = True
+                  line = True
                   i += 2
                   continue
 
               if c == "/" and n == "*":
-
-                  in_block_comment = True
+                  block = True
                   i += 2
                   continue
 
               if c == '"':
-
-                  in_string = True
+                  string = True
                   i += 1
                   continue
 
               if c == "'":
-
-                  in_char = True
+                  char = True
                   i += 1
                   continue
 
               if c in pairs:
-
                   stack.append(pairs[c])
 
               elif c in pairs.values():
 
                   if not stack or stack.pop() != c:
-
                       raise SystemExit(
-                          f"ERROR: Java delimiter mismatch "
-                          f"near index {i}: {c}"
+                          f"Java delimiter mismatch at {i}: {c}"
                       )
 
               i += 1
 
           if stack:
-
               raise SystemExit(
-                  f"ERROR: Java delimiters remain open: "
-                  f"{stack[-10:]}"
+                  f"Java delimiters left open: {stack[-10:]}"
               )
 
           print("Java delimiter check: OK")
@@ -473,10 +421,8 @@ workflows:
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
 
           if [ -z "$SDK_ROOT" ]; then
-
             echo "ERROR: Android SDK tidak ditemukan."
             exit 1
-
           fi
 
           echo "Android SDK:"
@@ -522,7 +468,7 @@ workflows:
           else
 
             echo "WARNING: sdkmanager tidak ditemukan."
-            echo "Menggunakan Android SDK yang tersedia."
+            echo "Menggunakan Android SDK yang tersedia di Codemagic."
 
           fi
 
@@ -548,7 +494,7 @@ workflows:
           GRADLE_CMD=""
 
           # --------------------------------------------------------
-          # 1. Gradle Wrapper project
+          # Gradle Wrapper
           # --------------------------------------------------------
           if [ -x "./gradlew" ]; then
 
@@ -561,7 +507,7 @@ workflows:
           fi
 
           # --------------------------------------------------------
-          # 2. System Gradle
+          # System Gradle
           # --------------------------------------------------------
           if [ -z "$GRADLE_CMD" ] &&
              command -v gradle >/dev/null 2>&1; then
@@ -574,7 +520,7 @@ workflows:
           fi
 
           # --------------------------------------------------------
-          # 3. Download Gradle fallback
+          # Gradle fallback
           # --------------------------------------------------------
           if [ -z "$GRADLE_CMD" ]; then
 
@@ -624,7 +570,8 @@ workflows:
 
           fi
 
-          chmod +x "$GRADLE_CMD" 2>/dev/null || true
+          chmod +x "$GRADLE_CMD" \
+            2>/dev/null || true
 
           echo "$GRADLE_CMD" \
             > "$ROOT/.codemagic_gradle"
@@ -690,7 +637,7 @@ workflows:
 
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
-          OUTPUT="$CM_EXPORT_DIR/DanaNativeReceiver-V16-FINAL-ADAPTIVE-4TAP-QR.apk"
+          OUTPUT="$CM_EXPORT_DIR/DanaNativeReceiver-V16-ADAPTIVE-LOADING-4TAP-QR.apk"
 
           echo "=================================================="
           echo "VERIFY V16 APK"
@@ -701,7 +648,8 @@ workflows:
             echo "ERROR: APK tidak ditemukan."
 
             echo ""
-            echo "Mencari semua APK:"
+
+            echo "Mencari APK yang tersedia:"
 
             find "$PROJECT_DIR" \
               -type f \
@@ -717,6 +665,7 @@ workflows:
           cp "$APK" "$OUTPUT"
 
           echo ""
+
           echo "APK OUTPUT:"
           echo "$OUTPUT"
 
@@ -754,4 +703,4 @@ workflows:
     # ==============================================================
     artifacts:
 
-      - $CM_EXPORT_DIR/DanaNativeReceiver-V16-FINAL-ADAPTIVE-4TAP-QR.apk
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V16-ADAPTIVE-LOADING-4TAP-QR.apk

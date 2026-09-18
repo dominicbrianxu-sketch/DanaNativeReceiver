@@ -1,6 +1,6 @@
 workflows:
-  dana-native-receiver-v18-full-debug-trace:
-    name: DanaNativeReceiver V18 - FULL DEBUG TRACE + ADAPTIVE LOADING + FIXED CENTER 4x TAP + QR DANA Kaget
+  dana-native-receiver-v19-full-debug-trace:
+    name: DanaNativeReceiver V19 - FULL DEBUG TRACE + ADAPTIVE LOADING + FIXED CENTER 4x TAP + QR DANA Kaget
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -15,7 +15,7 @@ workflows:
           cd "$ROOT"
 
           echo "=================================================="
-          echo "DANA NATIVE RECEIVER V18"
+          echo "DANA NATIVE RECEIVER V19"
           echo "PREPARE ANDROID PROJECT"
           echo "=================================================="
 
@@ -25,37 +25,32 @@ workflows:
           if [ -f "$ROOT/settings.gradle" ] || [ -f "$ROOT/settings.gradle.kts" ]; then
             PROJECT_DIR="$ROOT"
           else
-            # If the repository contains a project ZIP, prefer V18, then V17, then V16.
+            # If the repository contains a project ZIP, prefer V19 only.
             ZIP_FILE=""
-            for f in "$ROOT"/*V18*.zip "$ROOT"/*v18*.zip "$ROOT"/*V17*.zip "$ROOT"/*v17*.zip "$ROOT"/*V16*.zip "$ROOT"/*v16*.zip; do
+            for f in "$ROOT"/*V19*.zip "$ROOT"/*v19*.zip; do
               if [ -f "$f" ]; then
                 ZIP_FILE="$f"
                 break
               fi
             done
 
-            # Fall back to the first ZIP only if no versioned ZIP exists.
+            # Never silently fall back to an older project ZIP.
+            # A missing V19 ZIP must fail here instead of accidentally building V18/V17.
             if [ -z "$ZIP_FILE" ]; then
-              for f in "$ROOT"/*.zip; do
-                if [ -f "$f" ]; then
-                  ZIP_FILE="$f"
-                  break
-                fi
-              done
-            fi
-
-            if [ -z "$ZIP_FILE" ]; then
-              echo "ERROR: Android project tidak ditemukan."
+              echo "ERROR: V19 Android project ZIP tidak ditemukan."
+              echo "Pastikan DanaNativeReceiver_V19*.zip ada di repository root."
               exit 1
             fi
 
             EXTRACT_DIR="$ROOT/.android_project"
             rm -rf "$EXTRACT_DIR"
             mkdir -p "$EXTRACT_DIR"
+
             echo "Extracting: $ZIP_FILE"
             unzip -q "$ZIP_FILE" -d "$EXTRACT_DIR"
 
             SETTINGS_FILE="$(find "$EXTRACT_DIR" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+
             if [ -z "$SETTINGS_FILE" ]; then
               echo "ERROR: settings.gradle tidak ditemukan setelah extract."
               find "$EXTRACT_DIR" -maxdepth 5 -type f -print || true
@@ -70,9 +65,10 @@ workflows:
           test -d "$PROJECT_DIR/app"
 
           echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
+
           echo "PROJECT_DIR=$PROJECT_DIR"
 
-      - name: Validate V18 FULL DEBUG TRACE source
+      - name: Validate V19 FULL DEBUG TRACE source
         script: |
           set -e
           ROOT="$CM_BUILD_DIR"
@@ -80,7 +76,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "VALIDATING DANA NATIVE RECEIVER V18 FULL DEBUG TRACE"
+          echo "VALIDATING DANA NATIVE RECEIVER V19 FULL DEBUG TRACE"
           echo "=================================================="
 
           MANIFEST="app/src/main/AndroidManifest.xml"
@@ -99,6 +95,7 @@ workflows:
           test -f "$MAIN"
           test -f "$NTFY"
           test -f "$BUILD_FILE"
+
           grep -Fq 'class DebugTrace' "$DEBUG_TRACE"
           grep -Fq 'fullSnapshot' "$DEBUG_TRACE"
           grep -Fq 'dana_debug_trace.log' "$DEBUG_TRACE"
@@ -106,6 +103,7 @@ workflows:
           grep -Fq 'traceAccessibilityEvent' "$SERVICE"
           grep -Fq 'DebugTrace.detail' "$SERVICE"
           grep -Fq 'DebugTrace.detail' "$NTFY"
+
           echo "Required files + full-debug instrumentation: OK"
 
           # Accessibility service registration/capabilities.
@@ -115,6 +113,7 @@ workflows:
           grep -Fq 'android:canRetrieveWindowContent="true"' "$ACCESS_XML"
           grep -Fq 'android:canPerformGestures="true"' "$ACCESS_XML"
           grep -Fq 'android:canTakeScreenshot="true"' "$ACCESS_XML"
+
           echo "AccessibilityService manifest/capabilities: OK"
 
           # GestureResultCallback has its own `this`; DebugTrace must receive the
@@ -126,86 +125,131 @@ workflows:
           grep -Fq 'DebugTrace.fail(DanaAutoClickAccessibilityService.this, "QR screenshot: bitmap conversion gagal")' "$SERVICE"
 
           # Verify callback blocks themselves, rather than using brittle line-number
-          # filters. `this` is valid in the outer service and in Java lambdas, but
-          # inside anonymous GestureResultCallback/TakeScreenshotCallback classes
-          # it refers to the callback object and must NOT be passed as Context.
+          # filters.
           python3 - <<'PY'
           from pathlib import Path
           import re
 
-          path = Path("app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java")
+          path = Path(
+              "app/src/main/java/id/varino/danareceiver/"
+              "DanaAutoClickAccessibilityService.java"
+          )
+
           src = path.read_text(encoding="utf-8")
 
           def strip_for_braces(text):
               out = list(text)
               i = 0
               state = "code"
+
               while i < len(text):
                   c = text[i]
                   n = text[i + 1] if i + 1 < len(text) else ""
+
                   if state == "line":
                       out[i] = " "
-                      if c == "\n": state = "code"
+                      if c == "\n":
+                          state = "code"
+
                   elif state == "block":
                       out[i] = " "
                       if c == "*" and n == "/":
                           out[i + 1] = " "
                           i += 1
                           state = "code"
+
                   elif state == "string":
                       out[i] = " "
                       if c == "\\":
-                          if i + 1 < len(text): out[i + 1] = " "
+                          if i + 1 < len(text):
+                              out[i + 1] = " "
                           i += 1
-                      elif c == '"': state = "code"
+                      elif c == '"':
+                          state = "code"
+
                   elif state == "char":
                       out[i] = " "
                       if c == "\\":
-                          if i + 1 < len(text): out[i + 1] = " "
+                          if i + 1 < len(text):
+                              out[i + 1] = " "
                           i += 1
-                      elif c == "'": state = "code"
+                      elif c == "'":
+                          state = "code"
+
                   else:
                       if c == "/" and n == "/":
                           out[i] = out[i + 1] = " "
-                          i += 1; state = "line"
+                          i += 1
+                          state = "line"
+
                       elif c == "/" and n == "*":
                           out[i] = out[i + 1] = " "
-                          i += 1; state = "block"
+                          i += 1
+                          state = "block"
+
                       elif c == '"':
-                          out[i] = " "; state = "string"
+                          out[i] = " "
+                          state = "string"
+
                       elif c == "'":
-                          out[i] = " "; state = "char"
+                          out[i] = " "
+                          state = "char"
+
                   i += 1
+
               return "".join(out)
 
           clean = strip_for_braces(src)
 
           def matching_brace(text, start):
               depth = 0
+
               for i in range(start, len(text)):
-                  if text[i] == "{": depth += 1
+                  if text[i] == "{":
+                      depth += 1
+
                   elif text[i] == "}":
                       depth -= 1
-                      if depth == 0: return i
+
+                      if depth == 0:
+                          return i
+
               raise SystemExit("Unclosed callback brace")
 
           found = 0
-          for m in re.finditer(r"new\s+(GestureResultCallback|TakeScreenshotCallback)\s*\(\s*\)\s*\{", clean):
+
+          for m in re.finditer(
+              r"new\s+(GestureResultCallback|TakeScreenshotCallback)"
+              r"\s*\(\s*\)\s*\{",
+              clean
+          ):
               found += 1
+
               start = clean.find("{", m.start())
               end = matching_brace(clean, start)
+
               block = src[start:end + 1]
-              bad = re.findall(r"DebugTrace\.[A-Za-z_]+\(\s*this\s*,", block)
+
+              bad = re.findall(
+                  r"DebugTrace\.[A-Za-z_]+\(\s*this\s*,",
+                  block
+              )
+
               if bad:
                   raise SystemExit(
-                      f"ERROR: callback {m.group(1)} contains DebugTrace(...this,...). "
+                      f"ERROR: callback {m.group(1)} contains "
+                      "DebugTrace(...this,...). "
                       "Use DanaAutoClickAccessibilityService.this instead."
                   )
 
           if found == 0:
-              raise SystemExit("ERROR: no GestureResultCallback/TakeScreenshotCallback found")
+              raise SystemExit(
+                  "ERROR: no GestureResultCallback/TakeScreenshotCallback found"
+              )
 
-          print(f"Callback-context preflight: OK ({found} callback blocks checked)")
+          print(
+              f"Callback-context preflight: OK ({found} callback blocks checked)"
+          )
           PY
 
           echo "Gesture/QR callback Context preflight: OK"
@@ -214,6 +258,7 @@ workflows:
           grep -Fq 'com.google.mlkit:barcode-scanning' "$BUILD_FILE"
           grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
           grep -Fq 'android.net.Uri' "$SERVICE"
+
           echo "ML Kit QR scanner: OK"
 
           # Adaptive-loading/direct-tap implementation.
@@ -230,39 +275,53 @@ workflows:
           grep -Fq 'getRealMetrics' "$SERVICE"
           grep -Fq 'ENVELOPE_TAP_X = 0.50f' "$SERVICE"
           grep -Fq 'ENVELOPE_TAP_Y = 0.43f' "$SERVICE"
+
           echo "Adaptive loading + fixed-center 4x direct tap: OK"
 
           # Guard helper is required before Gradle compilation.
-          # Require the actual method declaration before Gradle compilation.
           grep -Fq 'private String getActivePackageSafely()' "$SERVICE"
+
           echo "Active-package guard helper: OK"
 
           # Screenshot path is retained for Telegram QR scanning.
           grep -Fq 'takeScreenshot' "$SERVICE"
           grep -Fq 'TakeScreenshotCallback' "$SERVICE"
+
           echo "Screenshot QR path: OK"
 
           # Pending-claim/DANA guards.
           grep -Fq 'id.dana' "$SERVICE"
           grep -Fq 'hasPendingClaim' "$SERVICE"
           grep -Fq 'awaitingClaimResult' "$SERVICE"
+
           echo "DANA/pending-claim guards: OK"
 
-          # Basic Java delimiter validation. This catches accidental missing
-          # braces/parentheses/brackets before Gradle is started.
+          # Basic Java delimiter validation.
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path("app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java")
+          p = Path(
+              "app/src/main/java/id/varino/danareceiver/"
+              "DanaAutoClickAccessibilityService.java"
+          )
+
           s = p.read_text(encoding="utf-8")
-          pairs = {"{": "}", "(": ")", "[": "]"}
+
+          pairs = {
+              "{": "}",
+              "(": ")",
+              "[": "]"
+          }
+
           closing = set(pairs.values())
           stack = []
+
           in_string = False
           in_char = False
           in_line_comment = False
           in_block_comment = False
           escape = False
+
           i = 0
 
           while i < len(s):
@@ -290,6 +349,7 @@ workflows:
                       escape = True
                   elif c == '"':
                       in_string = False
+
                   i += 1
                   continue
 
@@ -300,6 +360,7 @@ workflows:
                       escape = True
                   elif c == "'":
                       in_char = False
+
                   i += 1
                   continue
 
@@ -307,14 +368,17 @@ workflows:
                   in_line_comment = True
                   i += 2
                   continue
+
               if c == "/" and n == "*":
                   in_block_comment = True
                   i += 2
                   continue
+
               if c == '"':
                   in_string = True
                   i += 1
                   continue
+
               if c == "'":
                   in_char = True
                   i += 1
@@ -322,24 +386,35 @@ workflows:
 
               if c in pairs:
                   stack.append(pairs[c])
+
               elif c in closing:
                   if not stack or stack.pop() != c:
-                      raise SystemExit(f"Java delimiter mismatch at character {i}: {c}")
+                      raise SystemExit(
+                          f"Java delimiter mismatch at character {i}: {c}"
+                      )
+
               i += 1
 
           if in_string or in_char or in_block_comment:
               raise SystemExit("Java lexical state left open")
+
           if stack:
-              raise SystemExit(f"Java delimiters left open: {stack[-10:]}")
+              raise SystemExit(
+                  f"Java delimiters left open: {stack[-10:]}"
+              )
+
           print("Java delimiter check: OK")
           PY
 
           echo "=================================================="
-          grep -Fq "versionCode 19" "$BUILD_FILE"
-          grep -Fq "1.18-full-debug-trace" "$BUILD_FILE"
-          echo "Version metadata: V18 / versionCode 19 OK"
 
-          echo "V18 FULL DEBUG TRACE SOURCE VALIDATION OK"
+          grep -Fq "versionCode 20" "$BUILD_FILE"
+          grep -Fq "1.19-full-debug-trace" "$BUILD_FILE"
+
+          echo "Version metadata: V19 / versionCode 20 OK"
+
+          echo "V19 FULL DEBUG TRACE SOURCE VALIDATION OK"
+
           echo "=================================================="
 
       - name: Configure Android SDK
@@ -350,6 +425,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+
           if [ -z "$SDK_ROOT" ]; then
             echo "ERROR: Android SDK tidak ditemukan."
             exit 1
@@ -358,15 +434,27 @@ workflows:
           echo "sdk.dir=$SDK_ROOT" > local.properties
 
           SDKMANAGER=""
+
           if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
             SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           else
-            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -perm -111 2>/dev/null | head -1 || true)"
+            SDKMANAGER="$(
+              find "$SDK_ROOT/cmdline-tools" \
+                -type f \
+                -name sdkmanager \
+                -perm -111 \
+                2>/dev/null \
+                | head -1 || true
+            )"
           fi
 
           if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
             yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-            "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+            "$SDKMANAGER" \
+              "platform-tools" \
+              "platforms;android-35" \
+              "build-tools;35.0.0"
           fi
 
           echo "Android SDK configuration: OK"
@@ -381,21 +469,33 @@ workflows:
           if [ -x "./gradlew" ]; then
             chmod +x ./gradlew
             echo "$PROJECT_DIR/gradlew" > "$ROOT/.codemagic_gradle"
+
           elif command -v gradle >/dev/null 2>&1; then
             echo "$(command -v gradle)" > "$ROOT/.codemagic_gradle"
+
           else
             VERSION="8.14.1"
+
             DIST_ROOT="$ROOT/.gradle-dist"
             GRADLE_HOME="$DIST_ROOT/gradle-$VERSION"
             GRADLE_ZIP="$DIST_ROOT/gradle-$VERSION-bin.zip"
+
             mkdir -p "$DIST_ROOT"
 
             if [ ! -x "$GRADLE_HOME/bin/gradle" ]; then
-              curl --fail --location --retry 5 --retry-all-errors \
-                --connect-timeout 30 --max-time 600 \
+
+              curl \
+                --fail \
+                --location \
+                --retry 5 \
+                --retry-all-errors \
+                --connect-timeout 30 \
+                --max-time 600 \
                 -o "$GRADLE_ZIP" \
                 "https://services.gradle.org/distributions/gradle-$VERSION-bin.zip"
+
               rm -rf "$GRADLE_HOME"
+
               unzip -q "$GRADLE_ZIP" -d "$DIST_ROOT"
             fi
 
@@ -403,51 +503,70 @@ workflows:
           fi
 
           GRADLE="$(cat "$ROOT/.codemagic_gradle")"
+
           chmod +x "$GRADLE" 2>/dev/null || true
+
           "$GRADLE" --version
 
-      - name: Build V18 FULL DEBUG TRACE APK
+      - name: Build V19 FULL DEBUG TRACE APK
         script: |
           set -e
           ROOT="$CM_BUILD_DIR"
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
           GRADLE="$(cat "$ROOT/.codemagic_gradle")"
+
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "BUILD DANA NATIVE RECEIVER V18 FULL DEBUG TRACE"
+          echo "BUILD DANA NATIVE RECEIVER V19 FULL DEBUG TRACE"
           echo "=================================================="
 
-          "$GRADLE" clean assembleDebug --stacktrace --no-daemon --console=plain
+          "$GRADLE" \
+            clean \
+            assembleDebug \
+            --stacktrace \
+            --no-daemon \
+            --console=plain
 
-      - name: Verify and export V18 FULL DEBUG TRACE APK
+      - name: Verify and export V19 FULL DEBUG TRACE APK
         script: |
           set -e
           ROOT="$CM_BUILD_DIR"
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-          OUTPUT="$CM_EXPORT_DIR/DanaNativeReceiver-V18-DEBUG-TRACE-ADAPTIVE-LOADING-4TAP-QR.apk"
+
+          OUTPUT="$CM_EXPORT_DIR/DanaNativeReceiver-V19-DEBUG-TRACE-ADAPTIVE-LOADING-4TAP-QR.apk"
 
           if [ ! -f "$APK" ]; then
             echo "ERROR: APK tidak ditemukan setelah build."
-            find "$PROJECT_DIR" -type f -name '*.apk' -print || true
+
+            find "$PROJECT_DIR" \
+              -type f \
+              -name '*.apk' \
+              -print || true
+
             exit 1
           fi
 
           mkdir -p "$CM_EXPORT_DIR"
+
           cp "$APK" "$OUTPUT"
 
           echo "=================================================="
-          echo "V18 FULL DEBUG TRACE APK EXPORT OK"
+          echo "V19 FULL DEBUG TRACE APK EXPORT OK"
           echo "=================================================="
+
           ls -lh "$OUTPUT"
 
           echo "SHA-256:"
+
           if command -v shasum >/dev/null 2>&1; then
             shasum -a 256 "$OUTPUT"
+
           elif command -v sha256sum >/dev/null 2>&1; then
             sha256sum "$OUTPUT"
           fi
 
     artifacts:
-      - $CM_EXPORT_DIR/DanaNativeReceiver-V18-DEBUG-TRACE-ADAPTIVE-LOADING-4TAP-QR.apk
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V19-DEBUG-TRACE-ADAPTIVE-LOADING-4TAP-QR.apk

@@ -1,0 +1,343 @@
+workflows:
+  dana-native-receiver-v16:
+    name: DanaNativeReceiver V16 - ADAPTIVE LOADING + FIXED CENTER 4x TAP + QR DANA Kaget
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      java: 17
+
+    scripts:
+      - name: Prepare Android project
+        script: |
+          set -e
+          ROOT="$CM_BUILD_DIR"
+          cd "$ROOT"
+
+          echo "=================================================="
+          echo "DANA NATIVE RECEIVER V16"
+          echo "PREPARE ANDROID PROJECT"
+          echo "=================================================="
+
+          PROJECT_DIR=""
+
+          # Prefer an Android project already checked out at repository root.
+          if [ -f "$ROOT/settings.gradle" ] || [ -f "$ROOT/settings.gradle.kts" ]; then
+            PROJECT_DIR="$ROOT"
+          else
+            # If the repository contains a project ZIP, prefer the V16 ZIP.
+            ZIP_FILE=""
+            for f in "$ROOT"/*V16*.zip "$ROOT"/*v16*.zip; do
+              if [ -f "$f" ]; then
+                ZIP_FILE="$f"
+                break
+              fi
+            done
+
+            # Fall back to the first ZIP only if no V16 ZIP exists.
+            if [ -z "$ZIP_FILE" ]; then
+              for f in "$ROOT"/*.zip; do
+                if [ -f "$f" ]; then
+                  ZIP_FILE="$f"
+                  break
+                fi
+              done
+            fi
+
+            if [ -z "$ZIP_FILE" ]; then
+              echo "ERROR: Android project tidak ditemukan."
+              exit 1
+            fi
+
+            EXTRACT_DIR="$ROOT/.android_project"
+            rm -rf "$EXTRACT_DIR"
+            mkdir -p "$EXTRACT_DIR"
+            echo "Extracting: $ZIP_FILE"
+            unzip -q "$ZIP_FILE" -d "$EXTRACT_DIR"
+
+            SETTINGS_FILE="$(find "$EXTRACT_DIR" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+            if [ -z "$SETTINGS_FILE" ]; then
+              echo "ERROR: settings.gradle tidak ditemukan setelah extract."
+              find "$EXTRACT_DIR" -maxdepth 5 -type f -print || true
+              exit 1
+            fi
+
+            PROJECT_DIR="$(cd "$(dirname "$SETTINGS_FILE")" && pwd)"
+          fi
+
+          test -f "$PROJECT_DIR/settings.gradle" || test -f "$PROJECT_DIR/settings.gradle.kts"
+          test -f "$PROJECT_DIR/app/build.gradle" || test -f "$PROJECT_DIR/app/build.gradle.kts"
+          test -d "$PROJECT_DIR/app"
+
+          echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
+          echo "PROJECT_DIR=$PROJECT_DIR"
+
+      - name: Validate V16 source
+        script: |
+          set -e
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          cd "$PROJECT_DIR"
+
+          echo "=================================================="
+          echo "VALIDATING DANA NATIVE RECEIVER V16"
+          echo "=================================================="
+
+          MANIFEST="app/src/main/AndroidManifest.xml"
+          ACCESS_XML="app/src/main/res/xml/dana_accessibility_service.xml"
+          SERVICE="app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
+          BUILD_FILE="app/build.gradle"
+
+          # Required project files.
+          test -f "$MANIFEST"
+          test -f "$ACCESS_XML"
+          test -f "$SERVICE"
+          test -f "$BUILD_FILE"
+          echo "Required files: OK"
+
+          # Accessibility service registration/capabilities.
+          grep -Fq 'DanaAutoClickAccessibilityService' "$MANIFEST"
+          grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
+          grep -Fq 'android.accessibilityservice.AccessibilityService' "$MANIFEST"
+          grep -Fq 'android:canRetrieveWindowContent="true"' "$ACCESS_XML"
+          grep -Fq 'android:canPerformGestures="true"' "$ACCESS_XML"
+          grep -Fq 'android:canTakeScreenshot="true"' "$ACCESS_XML"
+          echo "AccessibilityService manifest/capabilities: OK"
+
+          # QR scanner.
+          grep -Fq 'com.google.mlkit:barcode-scanning' "$BUILD_FILE"
+          grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
+          grep -Fq 'android.net.Uri' "$SERVICE"
+          echo "ML Kit QR scanner: OK"
+
+          # V16 adaptive-loading/direct-tap implementation.
+          grep -Fq 'scheduleDirectEnvelopeTap' "$SERVICE"
+          grep -Fq 'startDirectTapSequence' "$SERVICE"
+          grep -Fq 'dispatchNextDirectTap' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_MAX_ATTEMPTS' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_START_DELAY_MS' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_ATTEMPT_GAP_MS' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_FALLBACK_AFTER_MS' "$SERVICE"
+          grep -Fq 'danaOpenAt' "$SERVICE"
+          grep -Fq 'danaLoadingWaitLogged' "$SERVICE"
+          grep -Fq 'dispatchGesture' "$SERVICE"
+          grep -Fq 'getRealMetrics' "$SERVICE"
+          grep -Fq 'ENVELOPE_TAP_X = 0.50f' "$SERVICE"
+          grep -Fq 'ENVELOPE_TAP_Y = 0.43f' "$SERVICE"
+          echo "Adaptive loading + fixed-center 4x direct tap: OK"
+
+          # The previous V16 build failed because calls existed without the helper.
+          # Require the actual method declaration before Gradle compilation.
+          grep -Fq 'private String getActivePackageSafely()' "$SERVICE"
+          echo "Active-package guard helper: OK"
+
+          # Screenshot path is retained for Telegram QR scanning.
+          grep -Fq 'takeScreenshot' "$SERVICE"
+          grep -Fq 'TakeScreenshotCallback' "$SERVICE"
+          echo "Screenshot QR path: OK"
+
+          # Pending-claim/DANA guards.
+          grep -Fq 'id.dana' "$SERVICE"
+          grep -Fq 'hasPendingClaim' "$SERVICE"
+          grep -Fq 'awaitingClaimResult' "$SERVICE"
+          echo "DANA/pending-claim guards: OK"
+
+          # Basic Java delimiter validation. This catches accidental missing
+          # braces/parentheses/brackets before Gradle is started.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java")
+          s = p.read_text(encoding="utf-8")
+          pairs = {"{": "}", "(": ")", "[": "]"}
+          closing = set(pairs.values())
+          stack = []
+          in_string = False
+          in_char = False
+          in_line_comment = False
+          in_block_comment = False
+          escape = False
+          i = 0
+
+          while i < len(s):
+              c = s[i]
+              n = s[i + 1] if i + 1 < len(s) else ""
+
+              if in_line_comment:
+                  if c == "\n":
+                      in_line_comment = False
+                  i += 1
+                  continue
+
+              if in_block_comment:
+                  if c == "*" and n == "/":
+                      in_block_comment = False
+                      i += 2
+                      continue
+                  i += 1
+                  continue
+
+              if in_string:
+                  if escape:
+                      escape = False
+                  elif c == "\\":
+                      escape = True
+                  elif c == '"':
+                      in_string = False
+                  i += 1
+                  continue
+
+              if in_char:
+                  if escape:
+                      escape = False
+                  elif c == "\\":
+                      escape = True
+                  elif c == "'":
+                      in_char = False
+                  i += 1
+                  continue
+
+              if c == "/" and n == "/":
+                  in_line_comment = True
+                  i += 2
+                  continue
+              if c == "/" and n == "*":
+                  in_block_comment = True
+                  i += 2
+                  continue
+              if c == '"':
+                  in_string = True
+                  i += 1
+                  continue
+              if c == "'":
+                  in_char = True
+                  i += 1
+                  continue
+
+              if c in pairs:
+                  stack.append(pairs[c])
+              elif c in closing:
+                  if not stack or stack.pop() != c:
+                      raise SystemExit(f"Java delimiter mismatch at character {i}: {c}")
+              i += 1
+
+          if in_string or in_char or in_block_comment:
+              raise SystemExit("Java lexical state left open")
+          if stack:
+              raise SystemExit(f"Java delimiters left open: {stack[-10:]}")
+          print("Java delimiter check: OK")
+          PY
+
+          echo "=================================================="
+          echo "V16 SOURCE VALIDATION OK"
+          echo "=================================================="
+
+      - name: Configure Android SDK
+        script: |
+          set -e
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          cd "$PROJECT_DIR"
+
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK_ROOT" ]; then
+            echo "ERROR: Android SDK tidak ditemukan."
+            exit 1
+          fi
+
+          echo "sdk.dir=$SDK_ROOT" > local.properties
+
+          SDKMANAGER=""
+          if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          else
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -perm -111 2>/dev/null | head -1 || true)"
+          fi
+
+          if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          fi
+
+          echo "Android SDK configuration: OK"
+
+      - name: Setup Gradle
+        script: |
+          set -e
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          cd "$PROJECT_DIR"
+
+          if [ -x "./gradlew" ]; then
+            chmod +x ./gradlew
+            echo "$PROJECT_DIR/gradlew" > "$ROOT/.codemagic_gradle"
+          elif command -v gradle >/dev/null 2>&1; then
+            echo "$(command -v gradle)" > "$ROOT/.codemagic_gradle"
+          else
+            VERSION="8.9"
+            DIST_ROOT="$ROOT/.gradle-dist"
+            GRADLE_HOME="$DIST_ROOT/gradle-$VERSION"
+            GRADLE_ZIP="$DIST_ROOT/gradle-$VERSION-bin.zip"
+            mkdir -p "$DIST_ROOT"
+
+            if [ ! -x "$GRADLE_HOME/bin/gradle" ]; then
+              curl --fail --location --retry 5 --retry-all-errors \
+                --connect-timeout 30 --max-time 600 \
+                -o "$GRADLE_ZIP" \
+                "https://services.gradle.org/distributions/gradle-$VERSION-bin.zip"
+              rm -rf "$GRADLE_HOME"
+              unzip -q "$GRADLE_ZIP" -d "$DIST_ROOT"
+            fi
+
+            echo "$GRADLE_HOME/bin/gradle" > "$ROOT/.codemagic_gradle"
+          fi
+
+          GRADLE="$(cat "$ROOT/.codemagic_gradle")"
+          chmod +x "$GRADLE" 2>/dev/null || true
+          "$GRADLE" --version
+
+      - name: Build V16 APK
+        script: |
+          set -e
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          GRADLE="$(cat "$ROOT/.codemagic_gradle")"
+          cd "$PROJECT_DIR"
+
+          echo "=================================================="
+          echo "BUILD DANA NATIVE RECEIVER V16"
+          echo "=================================================="
+
+          "$GRADLE" clean assembleDebug --stacktrace --no-daemon --console=plain
+
+      - name: Verify and export V16 APK
+        script: |
+          set -e
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          OUTPUT="$CM_EXPORT_DIR/DanaNativeReceiver-V16-ADAPTIVE-LOADING-4TAP-QR.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK tidak ditemukan setelah build."
+            find "$PROJECT_DIR" -type f -name '*.apk' -print || true
+            exit 1
+          fi
+
+          mkdir -p "$CM_EXPORT_DIR"
+          cp "$APK" "$OUTPUT"
+
+          echo "=================================================="
+          echo "V16 APK EXPORT OK"
+          echo "=================================================="
+          ls -lh "$OUTPUT"
+
+          echo "SHA-256:"
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$OUTPUT"
+          elif command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$OUTPUT"
+          fi
+
+    artifacts:
+      - $CM_EXPORT_DIR/DanaNativeReceiver-V16-ADAPTIVE-LOADING-4TAP-QR.apk

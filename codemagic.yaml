@@ -1,6 +1,6 @@
 workflows:
   dana-native-receiver-v26:
-    name: DanaNativeReceiver V26 - CLAIM SUCCESS STOP + 120s WATCHDOG
+    name: DanaNativeReceiver V26 - FULL DEBUG + QR DANA Kaget + 10-POINT LEARNING TAP + Rp SUCCESS + 120s AUTO CLOSE
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -8,131 +8,575 @@ workflows:
       java: 17
 
     scripts:
-
-      - name: Show Build Environment
+      - name: Prepare V26 Android project
         script: |
-          set -e
+          set -euo pipefail
 
-          echo "=============================================="
+          ROOT="$CM_BUILD_DIR"
+          cd "$ROOT"
+
+          echo "=================================================="
           echo "DANA NATIVE RECEIVER V26"
-          echo "=============================================="
+          echo "PREPARE ANDROID PROJECT"
+          echo "=================================================="
 
-          echo "CI=$CI"
-          echo "BUILD_NUMBER=$BUILD_NUMBER"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          java -version
-          ./gradlew --version
+          PROJECT_DIR=""
 
-      - name: Set Android SDK Location
-        script: |
-          set -e
+          # 1) If the Android project itself is the repository root, use it.
+          if [ -f "$ROOT/settings.gradle" ] || [ -f "$ROOT/settings.gradle.kts" ]; then
+            PROJECT_DIR="$ROOT"
+            echo "Android project detected at repository root."
+          else
+            # 2) Otherwise find the V25 ZIP. V25 is preferred explicitly so
+            #    an older V25/V24/V23/V22 archive can never be selected by accident.
+            ZIP_FILE=""
+            for pattern in \
+              "$ROOT"/DanaNativeReceiver_V25*.zip \
+              "$ROOT"/*V26*.zip \
+              "$ROOT"/*v26*.zip; do
+              if [ -f "$pattern" ]; then
+                ZIP_FILE="$pattern"
+                break
+              fi
+            done
 
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+            if [ -z "$ZIP_FILE" ]; then
+              echo "ERROR: DanaNativeReceiver V26 ZIP tidak ditemukan."
+              echo "Repository harus berisi project Android di root atau ZIP *V26*.zip."
+              echo "Isi repository yang relevan:"
+              find "$ROOT" -maxdepth 3 -type f \( -iname '*.zip' -o -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -print || true
+              exit 1
+            fi
 
-          echo "local.properties:"
-          cat "$CM_BUILD_DIR/local.properties"
+            EXTRACT_DIR="$ROOT/.android_project"
+            rm -rf "$EXTRACT_DIR"
+            mkdir -p "$EXTRACT_DIR"
 
-      - name: Clean Previous Build
-        script: |
-          set -e
+            echo "Extracting V26 project: $ZIP_FILE"
+            unzip -q "$ZIP_FILE" -d "$EXTRACT_DIR"
 
-          ./gradlew clean --no-daemon
+            SETTINGS_FILE="$(find "$EXTRACT_DIR" -type f -name 'settings.gradle' -print -quit)"
+            if [ -z "$SETTINGS_FILE" ]; then
+              SETTINGS_FILE="$(find "$EXTRACT_DIR" -type f -name 'settings.gradle.kts' -print -quit)"
+            fi
 
-      - name: Validate Gradle Project
-        script: |
-          set -e
+            if [ -z "$SETTINGS_FILE" ]; then
+              echo "ERROR: settings.gradle/settings.gradle.kts tidak ditemukan setelah extract."
+              find "$EXTRACT_DIR" -maxdepth 6 -type f -print || true
+              exit 1
+            fi
 
-          echo "Checking Gradle project..."
-
-          test -f "./gradlew"
-
-          if [ ! -x "./gradlew" ]; then
-            chmod +x ./gradlew
+            PROJECT_DIR="$(cd "$(dirname "$SETTINGS_FILE")" && pwd)"
+            echo "Extracted PROJECT_DIR=$PROJECT_DIR"
           fi
 
-          echo "Gradle wrapper OK"
+          test -f "$PROJECT_DIR/settings.gradle" || test -f "$PROJECT_DIR/settings.gradle.kts"
+          test -f "$PROJECT_DIR/app/build.gradle" || test -f "$PROJECT_DIR/app/build.gradle.kts"
+          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
 
-      - name: Build Debug APK
+          echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
+          echo "PROJECT_DIR=$PROJECT_DIR"
+
+      - name: Cross-check V26 source and Android configuration
         script: |
-          set -e
+          set -euo pipefail
 
-          echo "=============================================="
-          echo "BUILD DEBUG APK"
-          echo "=============================================="
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          cd "$PROJECT_DIR"
 
-          ./gradlew assembleDebug \
-            --no-daemon \
-            --stacktrace
+          echo "=================================================="
+          echo "CROSS-CHECK V26 SOURCE"
+          echo "=================================================="
 
-      - name: Verify APK
+          MANIFEST="app/src/main/AndroidManifest.xml"
+          ACCESS_XML="app/src/main/res/xml/dana_accessibility_service.xml"
+          SERVICE="app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
+          DEBUG_TRACE="app/src/main/java/id/varino/danareceiver/DebugTrace.java"
+          MAIN="app/src/main/java/id/varino/danareceiver/MainActivity.java"
+          NTFY="app/src/main/java/id/varino/danareceiver/NtfyService.java"
+          BOOT="app/src/main/java/id/varino/danareceiver/BootReceiver.java"
+          BUILD_FILE="app/build.gradle"
+
+          # Required files.
+          for f in "$MANIFEST" "$ACCESS_XML" "$SERVICE" "$DEBUG_TRACE" "$MAIN" "$NTFY" "$BOOT" "$BUILD_FILE"; do
+            test -f "$f"
+          done
+          echo "Required project files: OK"
+
+          # Package/version consistency.
+          grep -Fq 'namespace '\''id.varino.danareceiver'\''' "$BUILD_FILE"
+          grep -Fq 'applicationId '\''id.varino.danareceiver'\''' "$BUILD_FILE"
+          grep -Fq 'compileSdk 35' "$BUILD_FILE"
+          grep -Fq 'targetSdk 35' "$BUILD_FILE"
+          grep -Fq 'versionCode 26' "$BUILD_FILE"
+          grep -Fq '1.26-10point-learning-envelope-tap-rupiah-success-120s' "$BUILD_FILE"
+          echo "Android package + SDK + V26 version metadata: OK"
+
+          # Debug trace + UI instrumentation.
+          grep -Fq 'class DebugTrace' "$DEBUG_TRACE"
+          grep -Fq 'fullSnapshot' "$DEBUG_TRACE"
+          grep -Fq 'dana_debug_trace.log' "$DEBUG_TRACE"
+          grep -Fq 'LIHAT DEBUG LENGKAP' "$MAIN"
+          grep -Fq 'traceAccessibilityEvent' "$SERVICE"
+          grep -Fq 'DebugTrace.detail' "$SERVICE"
+          grep -Fq 'DebugTrace.detail' "$NTFY"
+          echo "Full debug instrumentation: OK"
+
+          # Accessibility registration/capabilities.
+          grep -Fq 'DanaAutoClickAccessibilityService' "$MANIFEST"
+          grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
+          grep -Fq 'android.accessibilityservice.AccessibilityService' "$MANIFEST"
+          grep -Fq 'android:canRetrieveWindowContent="true"' "$ACCESS_XML"
+          grep -Fq 'android:canPerformGestures="true"' "$ACCESS_XML"
+          grep -Fq 'android:canTakeScreenshot="true"' "$ACCESS_XML"
+          echo "AccessibilityService registration/capabilities: OK"
+
+          # QR scanner.
+          grep -Fq 'com.google.mlkit:barcode-scanning:17.3.0' "$BUILD_FILE"
+          grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
+          grep -Fq 'takeScreenshot' "$SERVICE"
+          grep -Fq 'TakeScreenshotCallback' "$SERVICE"
+          grep -Fq 'link.dana.id' "$SERVICE"
+          echo "ML Kit QR + screenshot path: OK"
+
+          # Direct-tap implementation and DANA guards.
+          grep -Fq 'scheduleDirectEnvelopeTap' "$SERVICE"
+          grep -Fq 'startDirectTapSequence' "$SERVICE"
+          grep -Fq 'dispatchNextDirectTap' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_MAX_ATTEMPTS = 10' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_START_DELAY_MS' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_ATTEMPT_GAP_MS' "$SERVICE"
+          grep -Fq 'DIRECT_TAP_FALLBACK_AFTER_MS' "$SERVICE"
+          grep -Fq 'TAP_VERIFY_DELAY_MS' "$SERVICE"
+          grep -Fq 'ENVELOPE_TAP_XS' "$SERVICE"
+          grep -Fq 'ENVELOPE_TAP_YS' "$SERVICE"
+          grep -Fq 'saveLearnedTapPoint' "$SERVICE"
+          grep -Fq 'buildTapOrder' "$SERVICE"
+          grep -Fq 'learned_envelope_x' "$SERVICE"
+          grep -Fq 'learned_envelope_y' "$SERVICE"
+          grep -Fq 'isDanaMainReadyClass' "$SERVICE"
+          grep -Fq 'getRealMetrics' "$SERVICE"
+          grep -Fq 'GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE' "$SERVICE"
+          grep -Fq 'hasPendingClaim' "$SERVICE"
+          grep -Fq 'awaitingClaimResult' "$SERVICE"
+          grep -Fq 'private String getActivePackageSafely()' "$SERVICE"
+          echo "10-point tap + UI verification + learned coordinate + DANA guards: OK"
+
+          # V26 claim-success guard: a visible Rupiah amount is the terminal
+          # success signal while an active DANA Kaget claim is being processed.
+          grep -Fq 'RUPIAH_AMOUNT_PATTERN' "$SERVICE"
+          grep -Fq 'Pattern.compile("(?i)\\brp\\s*[0-9][0-9\\.,]*\\b")' "$SERVICE"
+          grep -Fq 'detectClaimAmountSuccess' "$SERVICE"
+          grep -Fq 'CLAIM BERHASIL dikonfirmasi UI DANA' "$SERVICE"
+          grep -Fq 'claim success / Rupiah amount detected' "$SERVICE"
+          echo "V26 Rupiah success detection + terminal claim path: OK"
+
+          # V26 DANA watchdog: no DANA page may remain open indefinitely.
+          grep -Fq 'DANA_MAX_OPEN_MS = 120000L' "$SERVICE"
+          grep -Fq 'scheduleDanaTimeout' "$SERVICE"
+          grep -Fq 'timeoutAndCloseDana' "$SERVICE"
+          grep -Fq '120s timeout' "$SERVICE"
+          grep -Fq 'findDanaCloseNode' "$SERVICE"
+          echo "V26 120-second watchdog + X-close path: OK"
+
+          # Verify callback context: inside anonymous callbacks, `this` is NOT the
+          # AccessibilityService. DebugTrace must receive the outer service object.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java")
+          src = path.read_text(encoding="utf-8")
+
+          def strip_code(text):
+              out = list(text)
+              i = 0
+              state = "code"
+              while i < len(text):
+                  c = text[i]
+                  n = text[i + 1] if i + 1 < len(text) else ""
+                  if state == "line":
+                      out[i] = " "
+                      if c == "\n":
+                          state = "code"
+                  elif state == "block":
+                      out[i] = " "
+                      if c == "*" and n == "/":
+                          out[i + 1] = " "
+                          i += 1
+                          state = "code"
+                  elif state == "string":
+                      out[i] = " "
+                      if c == "\\":
+                          if i + 1 < len(text):
+                              out[i + 1] = " "
+                          i += 1
+                      elif c == '"':
+                          state = "code"
+                  elif state == "char":
+                      out[i] = " "
+                      if c == "\\":
+                          if i + 1 < len(text):
+                              out[i + 1] = " "
+                          i += 1
+                      elif c == "'":
+                          state = "code"
+                  else:
+                      if c == "/" and n == "/":
+                          out[i] = out[i + 1] = " "
+                          i += 1
+                          state = "line"
+                      elif c == "/" and n == "*":
+                          out[i] = out[i + 1] = " "
+                          i += 1
+                          state = "block"
+                      elif c == '"':
+                          out[i] = " "
+                          state = "string"
+                      elif c == "'":
+                          out[i] = " "
+                          state = "char"
+                  i += 1
+              return "".join(out)
+
+          clean = strip_code(src)
+
+          def matching_brace(text, start):
+              depth = 0
+              for i in range(start, len(text)):
+                  if text[i] == "{":
+                      depth += 1
+                  elif text[i] == "}":
+                      depth -= 1
+                      if depth == 0:
+                          return i
+              raise SystemExit("Unclosed callback brace")
+
+          found = 0
+
+          for m in re.finditer(
+              r"new\s+(GestureResultCallback|TakeScreenshotCallback)\s*\(\s*\)\s*\{",
+              clean
+          ):
+              found += 1
+              start = clean.find("{", m.start())
+              end = matching_brace(clean, start)
+              block = src[start:end + 1]
+
+              if re.search(r"DebugTrace\.[A-Za-z_]+\(\s*this\s*,", block):
+                  raise SystemExit(
+                      f"ERROR: {m.group(1)} contains DebugTrace(...this,...)"
+                  )
+
+          if found == 0:
+              raise SystemExit(
+                  "ERROR: no GestureResultCallback/TakeScreenshotCallback found"
+              )
+
+          print(
+              f"Callback-context preflight: OK ({found} callback blocks checked)"
+          )
+          PY
+
+          # Delimiter/lexical check for every Java file, not only the main service.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          pairs = {
+              "{": "}",
+              "(": ")",
+              "[": "]"
+          }
+
+          closing = set(pairs.values())
+
+          for path in Path("app/src/main/java").rglob("*.java"):
+              s = path.read_text(encoding="utf-8")
+
+              stack = []
+              state = "code"
+              escape = False
+              i = 0
+
+              while i < len(s):
+                  c = s[i]
+                  n = s[i + 1] if i + 1 < len(s) else ""
+
+                  if state == "line":
+                      if c == "\n":
+                          state = "code"
+
+                  elif state == "block":
+                      if c == "*" and n == "/":
+                          state = "code"
+                          i += 1
+
+                  elif state == "string":
+                      if escape:
+                          escape = False
+                      elif c == "\\":
+                          escape = True
+                      elif c == '"':
+                          state = "code"
+
+                  elif state == "char":
+                      if escape:
+                          escape = False
+                      elif c == "\\":
+                          escape = True
+                      elif c == "'":
+                          state = "code"
+
+                  else:
+                      if c == "/" and n == "/":
+                          state = "line"
+                          i += 1
+
+                      elif c == "/" and n == "*":
+                          state = "block"
+                          i += 1
+
+                      elif c == '"':
+                          state = "string"
+
+                      elif c == "'":
+                          state = "char"
+
+                      elif c in pairs:
+                          stack.append(pairs[c])
+
+                      elif c in closing:
+                          if not stack or stack.pop() != c:
+                              raise SystemExit(
+                                  f"Delimiter mismatch: {path}:{i}:{c}"
+                              )
+
+                  i += 1
+
+              if state != "code" or stack:
+                  raise SystemExit(
+                      f"Unclosed Java syntax: {path} "
+                      f"state={state} stack={stack[-10:]}"
+                  )
+
+              print(f"Java syntax preflight: OK {path}")
+          PY
+
+          # XML parse preflight.
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          files = [
+              Path("app/src/main/AndroidManifest.xml"),
+              Path("app/src/main/res/xml/dana_accessibility_service.xml"),
+              Path("app/src/main/res/values/strings.xml"),
+              Path("app/src/main/res/values/styles.xml"),
+          ]
+
+          for p in files:
+              ET.parse(p)
+              print(f"XML parse: OK {p}")
+          PY
+
+          echo "=================================================="
+          echo "V26 SOURCE CROSS-CHECK PASSED"
+          echo "=================================================="
+
+      - name: Security preflight - no credentials in source build files
         script: |
-          set -e
+          set -euo pipefail
 
-          echo "=============================================="
-          echo "VERIFY APK"
-          echo "=============================================="
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          cd "$PROJECT_DIR"
 
-          APK_COUNT=$(find . -type f -path "*/build/outputs/apk/**/*.apk" | wc -l | tr -d ' ')
+          echo "=================================================="
+          echo "SECURITY PREFLIGHT"
+          echo "=================================================="
 
-          echo "APK count: $APK_COUNT"
+          # Do not print or export secret values.
+          # This only rejects common hard-coded credential patterns.
+          if grep -RInE --exclude-dir=.gradle --exclude-dir=build \
+              '(api[_-]?key|secret[_-]?key|password|private[_-]?key|ntfy[_-]?token)\s*[:=]\s*["'"'"'][^"'"'"']{8,}["'"'"']' \
+              . >/tmp/dana_v26_secret_scan.txt 2>/dev/null; then
 
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: APK tidak ditemukan."
+            echo "ERROR: possible hard-coded credential detected in source/build files."
+            echo "Move the value to Codemagic Environment Variables / Secret variables."
             exit 1
           fi
 
-          find . -type f -path "*/build/outputs/apk/**/*.apk" -print
+          echo "No obvious hard-coded credential pattern found."
+          echo "=================================================="
 
-      - name: Build Release APK
+      - name: Configure Android SDK 35
         script: |
-          set -e
+          set -euo pipefail
 
-          echo "=============================================="
-          echo "BUILD RELEASE APK"
-          echo "=============================================="
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          cd "$PROJECT_DIR"
 
-          ./gradlew assembleRelease \
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+
+          if [ -z "$SDK_ROOT" ]; then
+            echo "ERROR: ANDROID_SDK_ROOT/ANDROID_HOME tidak tersedia."
+            exit 1
+          fi
+
+          echo "sdk.dir=$SDK_ROOT" > local.properties
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT"
+
+          SDKMANAGER=""
+
+          if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
+          elif [ -d "$SDK_ROOT/cmdline-tools" ]; then
+            SDKMANAGER="$(
+              find "$SDK_ROOT/cmdline-tools" \
+                -type f \
+                -name sdkmanager \
+                -perm -111 \
+                -print \
+                -quit 2>/dev/null || true
+            )"
+          fi
+
+          if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+
+            "$SDKMANAGER" \
+              "platform-tools" \
+              "platforms;android-35" \
+              "build-tools;35.0.0"
+
+          else
+            echo "WARNING: sdkmanager tidak ditemukan; memakai SDK yang sudah tersedia di Codemagic."
+          fi
+
+          test -d "$SDK_ROOT/platforms/android-35" || {
+            echo "ERROR: Android platform 35 tidak tersedia."
+            exit 1
+          }
+
+          echo "Android SDK 35 configuration: OK"
+
+      - name: Prepare Gradle 8.14.1
+        script: |
+          set -euo pipefail
+
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          cd "$PROJECT_DIR"
+
+          if [ -x "./gradlew" ]; then
+            chmod +x ./gradlew
+            GRADLE_CMD="$PROJECT_DIR/gradlew"
+            echo "Using project Gradle wrapper."
+
+          elif command -v gradle >/dev/null 2>&1; then
+            GRADLE_CMD="$(command -v gradle)"
+            echo "Using Codemagic-installed Gradle: $GRADLE_CMD"
+
+          else
+            GRADLE_VERSION="8.14.1"
+            DIST_ROOT="$ROOT/.gradle-dist"
+            GRADLE_HOME="$DIST_ROOT/gradle-$GRADLE_VERSION"
+            GRADLE_ZIP="$DIST_ROOT/gradle-$GRADLE_VERSION-bin.zip"
+
+            mkdir -p "$DIST_ROOT"
+
+            if [ ! -x "$GRADLE_HOME/bin/gradle" ]; then
+
+              curl \
+                --fail \
+                --location \
+                --retry 5 \
+                --retry-all-errors \
+                --connect-timeout 30 \
+                --max-time 600 \
+                -o "$GRADLE_ZIP" \
+                "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+
+              rm -rf "$GRADLE_HOME"
+
+              unzip -q "$GRADLE_ZIP" -d "$DIST_ROOT"
+            fi
+
+            GRADLE_CMD="$GRADLE_HOME/bin/gradle"
+          fi
+
+          test -x "$GRADLE_CMD"
+
+          echo "$GRADLE_CMD" > "$ROOT/.codemagic_gradle"
+
+          "$GRADLE_CMD" --version
+
+      - name: Build V26 DEBUG APK
+        script: |
+          set -euo pipefail
+
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          GRADLE="$(cat "$ROOT/.codemagic_gradle")"
+
+          cd "$PROJECT_DIR"
+
+          echo "=================================================="
+          echo "BUILD DANA NATIVE RECEIVER V26"
+          echo "=================================================="
+
+          "$GRADLE" \
             --no-daemon \
-            --stacktrace
+            --stacktrace \
+            --console=plain \
+            clean \
+            assembleDebug
 
-      - name: Collect Build Information
+      - name: Verify V26 APK
         script: |
-          set -e
+          set -euo pipefail
 
-          mkdir -p "$CM_BUILD_DIR/build-info"
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
 
-          echo "DanaNativeReceiver V26" \
-            > "$CM_BUILD_DIR/build-info/version.txt"
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
-          echo "Build number: $BUILD_NUMBER" \
-            >> "$CM_BUILD_DIR/build-info/version.txt"
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: app-debug.apk tidak ditemukan."
 
-          echo "Claim detection: Rp..." \
-            >> "$CM_BUILD_DIR/build-info/version.txt"
+            find "$PROJECT_DIR" \
+              -type f \
+              -name '*.apk' \
+              -print || true
 
-          echo "Claim success stops remaining taps: YES" \
-            >> "$CM_BUILD_DIR/build-info/version.txt"
+            exit 1
+          fi
 
-          echo "DANA timeout: 120 seconds" \
-            >> "$CM_BUILD_DIR/build-info/version.txt"
+          echo "APK found: $APK"
 
-          echo "Auto close X after timeout: YES" \
-            >> "$CM_BUILD_DIR/build-info/version.txt"
+          ls -lh "$APK"
 
-          echo "Standby after close: YES" \
-            >> "$CM_BUILD_DIR/build-info/version.txt"
+          echo "SHA-256:"
 
-          cat "$CM_BUILD_DIR/build-info/version.txt"
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "$APK"
+          else
+            sha256sum "$APK"
+          fi
+
+          # Put a stable copy in the build root so the artifact path remains
+          # predictable even when the source ZIP contains a nested directory.
+
+          mkdir -p "$ROOT/out"
+
+          cp "$APK" \
+            "$ROOT/out/DanaNativeReceiver-V26-DEBUG.apk"
+
+          ls -lh \
+            "$ROOT/out/DanaNativeReceiver-V26-DEBUG.apk"
 
     artifacts:
-      - "**/build/outputs/apk/**/*.apk"
-      - "build-info/version.txt"
-
-    publishing:
-      email:
-        recipients:
-          - "$CM_BUILD_OWNER_EMAIL"
-
-        notify:
-          success: true
-          failure: true
+      - $CM_BUILD_DIR/out/DanaNativeReceiver-V26-DEBUG.apk

@@ -27,13 +27,14 @@ workflows:
             PROJECT_DIR="$ROOT"
             echo "Android project detected at repository root."
           else
-            # 2) Otherwise find the V25 ZIP. V25 is preferred explicitly so
-            #    an older V24/V23/V22 archive can never be selected by accident.
+            # 2) Otherwise find the project ZIP. "DanaNativeReceiver*.zip" is
+            #    preferred first so this keeps working across versions
+            #    (V25, V26, V27, ...) without needing to edit this file every
+            #    time the zip is renamed for a new patch.
             ZIP_FILE=""
             for pattern in \
-              "$ROOT"/DanaNativeReceiver_V25*.zip \
-              "$ROOT"/*V25*.zip \
-              "$ROOT"/*v25*.zip; do
+              "$ROOT"/DanaNativeReceiver*.zip \
+              "$ROOT"/*.zip; do
               if [ -f "$pattern" ]; then
                 ZIP_FILE="$pattern"
                 break
@@ -41,8 +42,8 @@ workflows:
             done
 
             if [ -z "$ZIP_FILE" ]; then
-              echo "ERROR: DanaNativeReceiver V25 ZIP tidak ditemukan."
-              echo "Repository harus berisi project Android di root atau ZIP *V25*.zip."
+              echo "ERROR: ZIP project DanaNativeReceiver tidak ditemukan."
+              echo "Repository harus berisi project Android di root atau file *.zip berisi project Android."
               echo "Isi repository yang relevan:"
               find "$ROOT" -maxdepth 3 -type f \( -iname '*.zip' -o -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -print || true
               exit 1
@@ -52,7 +53,7 @@ workflows:
             rm -rf "$EXTRACT_DIR"
             mkdir -p "$EXTRACT_DIR"
 
-            echo "Extracting V25 project: $ZIP_FILE"
+            echo "Extracting project: $ZIP_FILE"
             unzip -q "$ZIP_FILE" -d "$EXTRACT_DIR"
 
             SETTINGS_FILE="$(find "$EXTRACT_DIR" -type f -name 'settings.gradle' -print -quit)"
@@ -201,18 +202,38 @@ workflows:
                           i += 1
                       elif c == "'": state = "code"
                   else:
-                      if c == "/" and n == "/": state = "line"; i += 1
-                      elif c == "/" and n == "*": state = "block"; i += 1
-                      elif c == '"': state = "string"
-                      elif c == "'": state = "char"
+                      if c == "/" and n == "/":
+                          out[i] = out[i + 1] = " "
+                          i += 1; state = "line"
+                      elif c == "/" and n == "*":
+                          out[i] = out[i + 1] = " "
+                          i += 1; state = "block"
+                      elif c == '"':
+                          out[i] = " "; state = "string"
+                      elif c == "'":
+                          out[i] = " "; state = "char"
                   i += 1
               return "".join(out)
 
-          stripped = strip_code(src)
-          callback_markers = ["GestureResultCallback", "TakeScreenshotCallback"]
+          clean = strip_code(src)
+
+          def matching_brace(text, start):
+              depth = 0
+              for i in range(start, len(text)):
+                  if text[i] == "{": depth += 1
+                  elif text[i] == "}":
+                      depth -= 1
+                      if depth == 0: return i
+              raise SystemExit("Unclosed callback brace")
+
           found = 0
-          for marker in callback_markers:
-              found += stripped.count(marker)
+          for m in re.finditer(r"new\s+(GestureResultCallback|TakeScreenshotCallback)\s*\(\s*\)\s*\{", clean):
+              found += 1
+              start = clean.find("{", m.start())
+              end = matching_brace(clean, start)
+              block = src[start:end + 1]
+              if re.search(r"DebugTrace\.[A-Za-z_]+\(\s*this\s*,", block):
+                  raise SystemExit(f"ERROR: {m.group(1)} contains DebugTrace(...this,...)")
 
           if found == 0:
               raise SystemExit("ERROR: no GestureResultCallback/TakeScreenshotCallback found")

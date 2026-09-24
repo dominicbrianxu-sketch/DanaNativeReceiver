@@ -98,6 +98,7 @@ workflows:
           NTFY="app/src/main/java/id/varino/danareceiver/NtfyService.java"
           BOOT="app/src/main/java/id/varino/danareceiver/BootReceiver.java"
           BUILD_FILE="app/build.gradle"
+          SCREEN_WAKER="app/src/main/java/id/varino/danareceiver/ScreenWaker.java"
 
           # Required files.
           for f in "$MANIFEST" "$ACCESS_XML" "$SERVICE" "$DEBUG_TRACE" "$MAIN" "$NTFY" "$BOOT" "$BUILD_FILE"; do
@@ -113,6 +114,23 @@ workflows:
           grep -Fq 'versionCode 28' "$BUILD_FILE"
           grep -Fq "versionName '1.29-race-mode-cache-cleaner'" "$BUILD_FILE"
           echo "Android package + SDK + V29 version metadata: OK"
+
+          # Screen keep-awake implementation must use only public Android SDK APIs.
+          # PowerManager.wakeUp() is hidden and must never be present because it
+          # breaks javac compilation with modern Android SDKs.
+          test -f "$SCREEN_WAKER"
+          grep -Fq 'PowerManager.SCREEN_BRIGHT_WAKE_LOCK' "$SCREEN_WAKER"
+          grep -Fq 'PowerManager.ACQUIRE_CAUSES_WAKEUP' "$SCREEN_WAKER"
+          if grep -Fq 'pm.wakeUp(' "$SCREEN_WAKER"; then
+            echo "ERROR: ScreenWaker.java masih memanggil hidden PowerManager.wakeUp()."
+            exit 1
+          fi
+          if grep -Fq 'SystemClock.uptimeMillis()' "$SCREEN_WAKER"; then
+            echo "ERROR: ScreenWaker.java masih memakai SystemClock untuk hidden wakeUp()."
+            exit 1
+          fi
+          echo "ScreenWaker public-SDK implementation: OK"
+
 
           # Debug trace + UI instrumentation.
           grep -Fq 'class DebugTrace' "$DEBUG_TRACE"

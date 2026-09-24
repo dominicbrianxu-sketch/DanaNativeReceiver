@@ -284,7 +284,7 @@ workflows:
 
 
           # =========================================================
-          # RACE MODE / DIRECT TAP
+          # RACE MODE
           # =========================================================
 
           grep -Fq \
@@ -371,7 +371,7 @@ workflows:
 
 
           # =========================================================
-          # AUTO CACHE CLEANER 30 MINUTES
+          # AUTO CACHE CLEANER - 30 MINUTES
           # =========================================================
 
           test -f "$CACHE_CLEANER"
@@ -401,20 +401,44 @@ workflows:
             "$NTFY"
 
           grep -Fq \
-            'CacheCleaner.clearDirectory(getApplicationContext().getCodeCache())' \
-            "$NTFY"
-
-          grep -Fq \
             'TimeUnit.MINUTES' \
             "$NTFY"
 
           grep -Fq \
-            '30' \
+            '30, 30, TimeUnit.MINUTES' \
             "$NTFY"
 
           grep -Fq \
             'cacheScheduler.shutdownNow()' \
             "$NTFY"
+
+          grep -Fq \
+            'getApplicationContext().getCacheDir()' \
+            "$NTFY"
+
+
+          # CRITICAL:
+          # getCodeCache() caused the previous Codemagic compilation failure.
+          # The V29 FIXED2 source must NOT contain it.
+
+          if grep -Fq \
+            'getCodeCache()' \
+            "$NTFY"; then
+
+            echo "=================================================="
+            echo "ERROR: getCodeCache() MASIH ADA"
+            echo "=================================================="
+
+            grep -n \
+              'getCodeCache()' \
+              "$NTFY" \
+              || true
+
+            exit 1
+          fi
+
+          echo "Cache cleaner uses cacheDir only."
+          echo "No getCodeCache() call found."
 
           echo "Auto Cache Cleaner 30-minute integration: OK"
 
@@ -432,20 +456,29 @@ workflows:
               "DanaAutoClickAccessibilityService.java"
           )
 
-          src = path.read_text(encoding="utf-8")
+          src = path.read_text(
+              encoding="utf-8"
+          )
 
 
           def strip_code(text):
+
               out = list(text)
 
               i = 0
+
               state = "code"
+
 
               while i < len(text):
 
                   c = text[i]
 
-                  n = text[i + 1] if i + 1 < len(text) else ""
+                  n = (
+                      text[i + 1]
+                      if i + 1 < len(text)
+                      else ""
+                  )
 
 
                   if state == "line":
@@ -548,11 +581,13 @@ workflows:
 
               depth = 0
 
+
               for i in range(start, len(text)):
 
                   if text[i] == "{":
 
                       depth += 1
+
 
                   elif text[i] == "}":
 
@@ -560,6 +595,7 @@ workflows:
 
                       if depth == 0:
                           return i
+
 
               raise SystemExit(
                   "Unclosed callback brace"
@@ -570,7 +606,8 @@ workflows:
 
 
           for m in re.finditer(
-              r"new\s+(GestureResultCallback|TakeScreenshotCallback)"
+              r"new\s+"
+              r"(GestureResultCallback|TakeScreenshotCallback)"
               r"\s*\(\s*\)\s*\{",
               clean
           ):
@@ -593,7 +630,8 @@ workflows:
 
 
               if re.search(
-                  r"DebugTrace\.[A-Za-z_]+\(\s*this\s*,",
+                  r"DebugTrace\.[A-Za-z_]+"
+                  r"\(\s*this\s*,",
                   block
               ):
 
@@ -620,7 +658,7 @@ workflows:
 
 
           # =========================================================
-          # JAVA DELIMITER / SYNTAX PREFLIGHT
+          # JAVA SYNTAX PREFLIGHT
           # =========================================================
 
           python3 - <<'PY'
@@ -867,7 +905,6 @@ workflows:
 
             SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 
-
           elif [
             -d \
             "$SDK_ROOT/cmdline-tools"
@@ -953,7 +990,6 @@ workflows:
             echo \
               "Using project Gradle wrapper."
 
-
           elif command -v gradle \
             >/dev/null 2>&1; then
 
@@ -964,7 +1000,6 @@ workflows:
             echo \
               "Using Codemagic-installed Gradle: " \
               "$GRADLE_CMD"
-
 
           else
 

@@ -31,20 +31,24 @@ workflows:
             for pattern in \
               "$ROOT"/DanaNativeReceiver*.zip \
               "$ROOT"/*.zip; do
+
               if [ -f "$pattern" ]; then
                 ZIP_FILE="$pattern"
                 break
               fi
+
             done
 
             if [ -z "$ZIP_FILE" ]; then
               echo "ERROR: ZIP project DanaNativeReceiver tidak ditemukan."
               echo "Repository harus berisi project Android di root atau file *.zip berisi project Android."
+
               find "$ROOT" -maxdepth 3 -type f \
                 \( -iname '*.zip' \
                 -o -name 'settings.gradle' \
                 -o -name 'settings.gradle.kts' \) \
                 -print || true
+
               exit 1
             fi
 
@@ -54,6 +58,7 @@ workflows:
             mkdir -p "$EXTRACT_DIR"
 
             echo "Extracting project: $ZIP_FILE"
+
             unzip -q "$ZIP_FILE" -d "$EXTRACT_DIR"
 
             SETTINGS_FILE="$(
@@ -74,14 +79,17 @@ workflows:
 
             if [ -z "$SETTINGS_FILE" ]; then
               echo "ERROR: settings.gradle/settings.gradle.kts tidak ditemukan setelah extract."
+
               find "$EXTRACT_DIR" \
                 -maxdepth 6 \
                 -type f \
                 -print || true
+
               exit 1
             fi
 
             PROJECT_DIR="$(cd "$(dirname "$SETTINGS_FILE")" && pwd)"
+
             echo "Extracted PROJECT_DIR=$PROJECT_DIR"
           fi
 
@@ -366,6 +374,8 @@ workflows:
           # AUTO CACHE CLEANER 30 MINUTES
           # =========================================================
 
+          test -f "$CACHE_CLEANER"
+
           grep -Fq \
             'class CacheCleaner' \
             "$CACHE_CLEANER"
@@ -387,11 +397,11 @@ workflows:
             "$NTFY"
 
           grep -Fq \
-            'CacheCleaner.clearDirectory(getCacheDir())' \
+            'CacheCleaner.clearDirectory(getApplicationContext().getCacheDir())' \
             "$NTFY"
 
           grep -Fq \
-            'CacheCleaner.clearDirectory(getCodeCache())' \
+            'CacheCleaner.clearDirectory(getApplicationContext().getCodeCache())' \
             "$NTFY"
 
           grep -Fq \
@@ -429,9 +439,7 @@ workflows:
               out = list(text)
 
               i = 0
-
               state = "code"
-
 
               while i < len(text):
 
@@ -540,23 +548,18 @@ workflows:
 
               depth = 0
 
-
               for i in range(start, len(text)):
 
                   if text[i] == "{":
 
                       depth += 1
 
-
                   elif text[i] == "}":
 
                       depth -= 1
 
-
                       if depth == 0:
-
                           return i
-
 
               raise SystemExit(
                   "Unclosed callback brace"
@@ -574,18 +577,15 @@ workflows:
 
               found += 1
 
-
               start = clean.find(
                   "{",
                   m.start()
               )
 
-
               end = matching_brace(
                   clean,
                   start
               )
-
 
               block = src[
                   start:end + 1
@@ -668,7 +668,6 @@ workflows:
                   if state == "line":
 
                       if c == "\n":
-
                           state = "code"
 
 

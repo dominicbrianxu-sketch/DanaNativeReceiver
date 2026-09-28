@@ -28,7 +28,10 @@ workflows:
           else
             ZIP_FILE=""
 
-            PREFERRED_ZIP="$ROOT/DanaNativeReceiver_V28_TELEGRAM_CONTROL_FIXED.zip"
+            # Prefer the exact V28 source archive. This prevents Codemagic from
+            # accidentally selecting an older DanaNativeReceiver*.zip when
+            # several archives exist in the workspace.
+            PREFERRED_ZIP="$ROOT/DanaNativeReceiver_V28_COMMAND_REPORT_CHAT_FIX.zip"
             if [ -f "$PREFERRED_ZIP" ]; then
               ZIP_FILE="$PREFERRED_ZIP"
             else
@@ -76,6 +79,9 @@ workflows:
           echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
           echo "PROJECT_DIR=$PROJECT_DIR"
 
+          # Hard guard against the exact compile error seen in V28: the polling
+          # loop calls saveUpdateId(long), so the selected source MUST contain
+          # that method before Gradle is allowed to compile anything.
           BOT_CONTROLLER="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
           test -f "$BOT_CONTROLLER"
           grep -Fq 'if (id >= 0) saveUpdateId(id + 1L);' "$BOT_CONTROLLER" || {
@@ -120,6 +126,7 @@ workflows:
 
           echo "Required files: OK"
 
+          # Raw V28 identity/version remains unchanged.
           grep -Fq "namespace 'id.varino.danareceiver'" "$BUILD_FILE"
           grep -Fq "applicationId 'id.varino.danareceiver'" "$BUILD_FILE"
           grep -Fq 'compileSdk 35' "$BUILD_FILE"
@@ -128,6 +135,7 @@ workflows:
           grep -Fq "versionName '1.28-notification-link-autostart'" "$BUILD_FILE"
           echo "Raw V28 build metadata: OK"
 
+          # Screen-off/wake logic.
           grep -Fq 'android.permission.WAKE_LOCK' "$MANIFEST"
           grep -Fq 'android.permission.DISABLE_KEYGUARD' "$MANIFEST"
           grep -Fq 'class ScreenWaker' "$WAKER"
@@ -137,6 +145,7 @@ workflows:
           grep -Fq 'ScreenWaker.release' "$SERVICE"
           echo "Screen-off/wake logic: OK"
 
+          # Original DANA claim/tap logic.
           grep -Fq 'DIRECT_TAP_START_DELAY_MS = 700L' "$SERVICE"
           grep -Fq 'DEFAULT_DIRECT_TAP_MAX_ATTEMPTS = 10' "$SERVICE"
           grep -Fq 'DEFAULT_DIRECT_TAP_ATTEMPT_GAP_MS = 650L' "$SERVICE"
@@ -153,6 +162,7 @@ workflows:
           grep -Fq 'dispatchNextDirectTap' "$SERVICE"
           echo "Original learned 10-point tap logic: OK"
 
+          # V26 stop-on-success and watchdog.
           grep -Fq 'kamu dapet' "$SERVICE"
           grep -Fq 'yay! kamu dapet' "$SERVICE"
           grep -Fq 'claimConfirmed' "$SERVICE"
@@ -163,6 +173,7 @@ workflows:
           grep -Fq 'GLOBAL_ACTION_BACK' "$SERVICE"
           echo "Stop-on-success + auto-close + 2-minute watchdog: OK"
 
+          # QR / screenshot / ML Kit.
           grep -Fq 'com.google.mlkit:barcode-scanning:17.3.0' "$BUILD_FILE"
           grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
           grep -Fq 'takeScreenshot' "$SERVICE"
@@ -171,6 +182,9 @@ workflows:
           grep -Fq 'handleDanaQrUrl' "$SERVICE"
           echo "QR DANA screenshot/ML Kit logic: OK"
 
+          # V28: DANA link directly inside Telegram/Nicegram/Telegram Plus
+          # notification must launch DANA without requiring a QR scan or a
+          # notification click.
           grep -Fq 'DANA_NOTIFICATION_URL_PATTERN' "$SERVICE"
           grep -Fq 'extractDanaNotificationUrl' "$SERVICE"
           grep -Fq 'handleDanaNotificationUrl' "$SERVICE"
@@ -180,6 +194,7 @@ workflows:
           grep -Fq 'openDana.setPackage(DANA_PACKAGE)' "$SERVICE"
           echo "Notification DANA URL auto-open path: OK"
 
+          # Accessibility registration.
           grep -Fq 'DanaAutoClickAccessibilityService' "$MANIFEST"
           grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
           grep -Fq 'android:canRetrieveWindowContent="true"' "$ACCESS_XML"
@@ -187,12 +202,14 @@ workflows:
           grep -Fq 'android:canTakeScreenshot="true"' "$ACCESS_XML"
           echo "Accessibility registration/capabilities: OK"
 
+          # Full debug trace remains present.
           grep -Fq 'class DebugTrace' "$DEBUG"
           grep -Fq 'fullSnapshot' "$DEBUG"
           grep -Fq 'dana_debug_trace.log' "$DEBUG"
           grep -Fq 'traceAccessibilityEvent' "$SERVICE"
           echo "Full DebugTrace: OK"
 
+          # New Telegram Bot API layer.
           grep -Fq 'api.telegram.org/bot' "$BOT"
           grep -Fq 'getUpdates' "$BOT"
           grep -Fq 'sendMessage' "$BOT"
@@ -218,13 +235,13 @@ workflows:
           grep -Fq 'TelegramBotController.sendClaimReport' "$SERVICE"
           echo "Telegram Bot API controller: OK"
 
+          # Remote configuration must never exceed original 10-point geometry.
           grep -Fq 'count > 10' "$BOT"
-
+          # The runtime clamp in the source is tightened below by this preflight.
           grep -Fq 'return Math.max(1, Math.min(10, value))' "$SERVICE" || {
             echo "ERROR: runtime tap clamp is not 1-10"
             exit 1
           }
-
           echo "Remote tap limit 1-10: OK"
 
           echo "=================================================="
@@ -296,9 +313,7 @@ workflows:
                   i += 1
 
               if state != 'code' or stack:
-                  raise SystemExit(
-                      f'Unclosed Java syntax: {path} state={state} stack={stack[-10:]}'
-                  )
+                  raise SystemExit(f'Unclosed Java syntax: {path} state={state} stack={stack[-10:]}')
 
               print(f'Java syntax preflight: OK {path}')
           PY
@@ -336,7 +351,6 @@ workflows:
           cd "$PROJECT_DIR"
 
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-
           if [ -z "$SDK_ROOT" ]; then
             echo "ERROR: ANDROID_SDK_ROOT/ANDROID_HOME tidak tersedia."
             exit 1
@@ -345,7 +359,6 @@ workflows:
           echo "sdk.dir=$SDK_ROOT" > local.properties
 
           SDKMANAGER=""
-
           if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
             SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           elif [ -d "$SDK_ROOT/cmdline-tools" ]; then
@@ -375,16 +388,13 @@ workflows:
           if [ -x "./gradlew" ]; then
             chmod +x ./gradlew
             GRADLE_CMD="$PROJECT_DIR/gradlew"
-
           elif command -v gradle >/dev/null 2>&1; then
             GRADLE_CMD="$(command -v gradle)"
-
           else
             GRADLE_VERSION="8.14.1"
             DIST_ROOT="$ROOT/.gradle-dist"
             GRADLE_HOME="$DIST_ROOT/gradle-$GRADLE_VERSION"
             GRADLE_ZIP="$DIST_ROOT/gradle-$GRADLE_VERSION-bin.zip"
-
             mkdir -p "$DIST_ROOT"
 
             if [ ! -x "$GRADLE_HOME/bin/gradle" ]; then
@@ -392,7 +402,6 @@ workflows:
                 --connect-timeout 30 --max-time 600 \
                 -o "$GRADLE_ZIP" \
                 "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
-
               rm -rf "$GRADLE_HOME"
               unzip -q "$GRADLE_ZIP" -d "$DIST_ROOT"
             fi
@@ -401,9 +410,7 @@ workflows:
           fi
 
           test -x "$GRADLE_CMD"
-
           echo "$GRADLE_CMD" > "$ROOT/.codemagic_gradle"
-
           "$GRADLE_CMD" --version
 
       - name: Build V28 DEBUG APK
@@ -413,7 +420,6 @@ workflows:
           ROOT="$CM_BUILD_DIR"
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
           GRADLE="$(cat "$ROOT/.codemagic_gradle")"
-
           cd "$PROJECT_DIR"
 
           echo "=================================================="
@@ -421,15 +427,9 @@ workflows:
           echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
+          # Force a clean compile from the selected source archive.
           rm -rf "$PROJECT_DIR/app/build"
-
-          "$GRADLE" \
-            --no-daemon \
-            --no-build-cache \
-            --rerun-tasks \
-            --stacktrace \
-            --console=plain \
-            clean assembleDebug
+          "$GRADLE" --no-daemon --no-build-cache --rerun-tasks --stacktrace --console=plain clean assembleDebug
 
       - name: Verify APK
         script: |
@@ -449,7 +449,6 @@ workflows:
           ls -lh "$APK"
 
           echo "SHA-256:"
-
           if command -v shasum >/dev/null 2>&1; then
             shasum -a 256 "$APK"
           else
@@ -457,12 +456,8 @@ workflows:
           fi
 
           mkdir -p "$ROOT/out"
-
-          cp "$APK" \
-            "$ROOT/out/DanaNativeReceiver-V28-TELEGRAM-CONTROL-DEBUG.apk"
-
-          ls -lh \
-            "$ROOT/out/DanaNativeReceiver-V28-TELEGRAM-CONTROL-DEBUG.apk"
+          cp "$APK" "$ROOT/out/DanaNativeReceiver-V28-TELEGRAM-CONTROL-DEBUG.apk"
+          ls -lh "$ROOT/out/DanaNativeReceiver-V28-TELEGRAM-CONTROL-DEBUG.apk"
 
     artifacts:
       - $CM_BUILD_DIR/out/DanaNativeReceiver-V28-TELEGRAM-CONTROL-DEBUG.apk

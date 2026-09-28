@@ -71,6 +71,7 @@ workflows:
           echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
           echo "PROJECT_DIR=$PROJECT_DIR"
 
+
       - name: Cross-check raw V27 logic and Telegram Bot layer
         script: |
           set -euo pipefail
@@ -103,6 +104,7 @@ workflows:
 
           echo "Required files: OK"
 
+          # Raw V27 identity/version remains unchanged.
           grep -Fq "namespace 'id.varino.danareceiver'" "$BUILD_FILE"
           grep -Fq "applicationId 'id.varino.danareceiver'" "$BUILD_FILE"
           grep -Fq 'compileSdk 35' "$BUILD_FILE"
@@ -111,6 +113,7 @@ workflows:
           grep -Fq "versionName '1.25-10point-learning-envelope-tap'" "$BUILD_FILE"
           echo "Raw V27 build metadata: OK"
 
+          # Screen-off/wake logic.
           grep -Fq 'android.permission.WAKE_LOCK' "$MANIFEST"
           grep -Fq 'android.permission.DISABLE_KEYGUARD' "$MANIFEST"
           grep -Fq 'class ScreenWaker' "$WAKER"
@@ -120,6 +123,7 @@ workflows:
           grep -Fq 'ScreenWaker.release' "$SERVICE"
           echo "Screen-off/wake logic: OK"
 
+          # Original DANA claim/tap logic.
           grep -Fq 'DIRECT_TAP_START_DELAY_MS = 700L' "$SERVICE"
           grep -Fq 'DEFAULT_DIRECT_TAP_MAX_ATTEMPTS = 10' "$SERVICE"
           grep -Fq 'DEFAULT_DIRECT_TAP_ATTEMPT_GAP_MS = 650L' "$SERVICE"
@@ -136,6 +140,7 @@ workflows:
           grep -Fq 'dispatchNextDirectTap' "$SERVICE"
           echo "Original learned 10-point tap logic: OK"
 
+          # V26 stop-on-success and watchdog.
           grep -Fq 'kamu dapet' "$SERVICE"
           grep -Fq 'yay! kamu dapet' "$SERVICE"
           grep -Fq 'claimConfirmed' "$SERVICE"
@@ -146,6 +151,7 @@ workflows:
           grep -Fq 'GLOBAL_ACTION_BACK' "$SERVICE"
           echo "Stop-on-success + auto-close + 2-minute watchdog: OK"
 
+          # QR / screenshot / ML Kit.
           grep -Fq 'com.google.mlkit:barcode-scanning:17.3.0' "$BUILD_FILE"
           grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
           grep -Fq 'takeScreenshot' "$SERVICE"
@@ -154,6 +160,7 @@ workflows:
           grep -Fq 'handleDanaQrUrl' "$SERVICE"
           echo "QR DANA screenshot/ML Kit logic: OK"
 
+          # Accessibility registration.
           grep -Fq 'DanaAutoClickAccessibilityService' "$MANIFEST"
           grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
           grep -Fq 'android:canRetrieveWindowContent="true"' "$ACCESS_XML"
@@ -161,12 +168,14 @@ workflows:
           grep -Fq 'android:canTakeScreenshot="true"' "$ACCESS_XML"
           echo "Accessibility registration/capabilities: OK"
 
+          # Full debug trace remains present.
           grep -Fq 'class DebugTrace' "$DEBUG"
           grep -Fq 'fullSnapshot' "$DEBUG"
           grep -Fq 'dana_debug_trace.log' "$DEBUG"
           grep -Fq 'traceAccessibilityEvent' "$SERVICE"
           echo "Full DebugTrace: OK"
 
+          # New Telegram Bot API layer.
           grep -Fq 'api.telegram.org/bot' "$BOT"
           grep -Fq 'getUpdates' "$BOT"
           grep -Fq 'sendMessage' "$BOT"
@@ -182,20 +191,32 @@ workflows:
           grep -Fq 'telegram_chat_id' "$BOT"
           grep -Fq 'telegram_device_id' "$BOT"
           grep -Fq 'telegram_bot_enabled' "$BOT"
+
+          # FIX V27:
+          # TelegramBotController sebelumnya memanggil saveUpdateId(long)
+          # tetapi method tersebut hilang sehingga javac gagal.
+          grep -Fq 'private void saveUpdateId(long nextOffset)' "$BOT"
+          grep -Fq 'KEY_UPDATE_ID' "$BOT"
+
           grep -Fq 'TelegramBotService' "$MANIFEST"
           grep -Fq 'TelegramBotController.sendClaimReport' "$SERVICE"
           echo "Telegram Bot API controller: OK"
 
+          # Remote configuration must never exceed original 10-point geometry.
           grep -Fq 'count > 10' "$BOT"
+
+          # The runtime clamp in the source is tightened below by this preflight.
           grep -Fq 'return Math.max(1, Math.min(10, value))' "$SERVICE" || {
             echo "ERROR: runtime tap clamp is not 1-10"
             exit 1
           }
+
           echo "Remote tap limit 1-10: OK"
 
           echo "=================================================="
           echo "RAW V27 + TELEGRAM BOT CROSS-CHECK PASSED"
           echo "=================================================="
+
 
       - name: Java syntax preflight
         script: |
@@ -225,10 +246,12 @@ workflows:
                   if state == 'line':
                       if c == '\n':
                           state = 'code'
+
                   elif state == 'block':
                       if c == '*' and n == '/':
                           state = 'code'
                           i += 1
+
                   elif state == 'string':
                       if escape:
                           escape = False
@@ -236,6 +259,7 @@ workflows:
                           escape = True
                       elif c == '"':
                           state = 'code'
+
                   elif state == 'char':
                       if escape:
                           escape = False
@@ -243,29 +267,42 @@ workflows:
                           escape = True
                       elif c == "'":
                           state = 'code'
+
                   else:
                       if c == '/' and n == '/':
                           state = 'line'
                           i += 1
+
                       elif c == '/' and n == '*':
                           state = 'block'
                           i += 1
+
                       elif c == '"':
                           state = 'string'
+
                       elif c == "'":
                           state = 'char'
+
                       elif c in pairs:
                           stack.append(pairs[c])
+
                       elif c in closing:
                           if not stack or stack.pop() != c:
-                              raise SystemExit(f'Delimiter mismatch: {path}:{i}:{c}')
+                              raise SystemExit(
+                                  f'Delimiter mismatch: {path}:{i}:{c}'
+                              )
+
                   i += 1
 
               if state != 'code' or stack:
-                  raise SystemExit(f'Unclosed Java syntax: {path} state={state} stack={stack[-10:]}')
+                  raise SystemExit(
+                      f'Unclosed Java syntax: {path} '
+                      f'state={state} stack={stack[-10:]}'
+                  )
 
               print(f'Java syntax preflight: OK {path}')
           PY
+
 
       - name: XML resource preflight
         script: |
@@ -291,6 +328,7 @@ workflows:
               print(f'XML parse: OK {p}')
           PY
 
+
       - name: Configure Android SDK 35
         script: |
           set -euo pipefail
@@ -300,6 +338,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+
           if [ -z "$SDK_ROOT" ]; then
             echo "ERROR: ANDROID_SDK_ROOT/ANDROID_HOME tidak tersedia."
             exit 1
@@ -308,15 +347,26 @@ workflows:
           echo "sdk.dir=$SDK_ROOT" > local.properties
 
           SDKMANAGER=""
+
           if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
             SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
           elif [ -d "$SDK_ROOT/cmdline-tools" ]; then
-            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -perm -111 -print -quit 2>/dev/null || true)"
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" \
+              -type f \
+              -name sdkmanager \
+              -perm -111 \
+              -print \
+              -quit 2>/dev/null || true)"
           fi
 
           if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
             yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-            "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+            "$SDKMANAGER" \
+              "platform-tools" \
+              "platforms;android-35" \
+              "build-tools;35.0.0"
           fi
 
           test -d "$SDK_ROOT/platforms/android-35" || {
@@ -325,6 +375,7 @@ workflows:
           }
 
           echo "Android SDK 35 configuration: OK"
+
 
       - name: Prepare Gradle 8.14.1
         script: |
@@ -337,21 +388,31 @@ workflows:
           if [ -x "./gradlew" ]; then
             chmod +x ./gradlew
             GRADLE_CMD="$PROJECT_DIR/gradlew"
+
           elif command -v gradle >/dev/null 2>&1; then
             GRADLE_CMD="$(command -v gradle)"
+
           else
             GRADLE_VERSION="8.14.1"
             DIST_ROOT="$ROOT/.gradle-dist"
             GRADLE_HOME="$DIST_ROOT/gradle-$GRADLE_VERSION"
             GRADLE_ZIP="$DIST_ROOT/gradle-$GRADLE_VERSION-bin.zip"
+
             mkdir -p "$DIST_ROOT"
 
             if [ ! -x "$GRADLE_HOME/bin/gradle" ]; then
-              curl --fail --location --retry 5 --retry-all-errors \
-                --connect-timeout 30 --max-time 600 \
+
+              curl --fail \
+                --location \
+                --retry 5 \
+                --retry-all-errors \
+                --connect-timeout 30 \
+                --max-time 600 \
                 -o "$GRADLE_ZIP" \
                 "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+
               rm -rf "$GRADLE_HOME"
+
               unzip -q "$GRADLE_ZIP" -d "$DIST_ROOT"
             fi
 
@@ -359,8 +420,11 @@ workflows:
           fi
 
           test -x "$GRADLE_CMD"
+
           echo "$GRADLE_CMD" > "$ROOT/.codemagic_gradle"
+
           "$GRADLE_CMD" --version
+
 
       - name: Build V27 DEBUG APK
         script: |
@@ -369,6 +433,7 @@ workflows:
           ROOT="$CM_BUILD_DIR"
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
           GRADLE="$(cat "$ROOT/.codemagic_gradle")"
+
           cd "$PROJECT_DIR"
 
           echo "=================================================="
@@ -376,7 +441,13 @@ workflows:
           echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
-          "$GRADLE" --no-daemon --stacktrace --console=plain clean assembleDebug
+          "$GRADLE" \
+            --no-daemon \
+            --stacktrace \
+            --console=plain \
+            clean \
+            assembleDebug
+
 
       - name: Verify APK
         script: |
@@ -384,6 +455,7 @@ workflows:
 
           ROOT="$CM_BUILD_DIR"
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
           test -f "$APK" || {
@@ -396,6 +468,7 @@ workflows:
           ls -lh "$APK"
 
           echo "SHA-256:"
+
           if command -v shasum >/dev/null 2>&1; then
             shasum -a 256 "$APK"
           else
@@ -403,8 +476,13 @@ workflows:
           fi
 
           mkdir -p "$ROOT/out"
-          cp "$APK" "$ROOT/out/DanaNativeReceiver-V27-TELEGRAM-CONTROL-DEBUG.apk"
-          ls -lh "$ROOT/out/DanaNativeReceiver-V27-TELEGRAM-CONTROL-DEBUG.apk"
+
+          cp "$APK" \
+            "$ROOT/out/DanaNativeReceiver-V27-TELEGRAM-CONTROL-DEBUG.apk"
+
+          ls -lh \
+            "$ROOT/out/DanaNativeReceiver-V27-TELEGRAM-CONTROL-DEBUG.apk"
+
 
     artifacts:
       - $CM_BUILD_DIR/out/DanaNativeReceiver-V27-TELEGRAM-CONTROL-DEBUG.apk

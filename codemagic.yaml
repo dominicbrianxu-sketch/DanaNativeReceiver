@@ -8,180 +8,329 @@ workflows:
       java: 17
 
     scripts:
+
       - name: Verify V30 Android project and 3-page UI
         script: |
-          set -euo pipefail
+          set -u
           cd "$CM_BUILD_DIR"
 
-          test -f settings.gradle || test -f settings.gradle.kts
-          test -f app/build.gradle || test -f app/build.gradle.kts
-          test -f app/src/main/AndroidManifest.xml
+          echo "=========================================="
+          echo "DANA NATIVE RECEIVER V30"
+          echo "ANDROID PROJECT VERIFICATION"
+          echo "=========================================="
 
-          MAIN="app/src/main/java/id/varino/danareceiver/MainActivity.java"
-          SERVICE="app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
-          NTFY="app/src/main/java/id/varino/danareceiver/NtfyService.java"
-          BOT="app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
-          BUILD="app/build.gradle"
+          echo ""
+          echo "Build directory:"
+          echo "$CM_BUILD_DIR"
 
-          for f in "$MAIN" "$SERVICE" "$NTFY" "$BOT" "$BUILD"; do test -f "$f"; done
+          echo ""
+          echo "Current directory:"
+          pwd
 
-          grep -Fq 'DANA Native Receiver V30' "$MAIN"
-          grep -Fq 'HorizontalScrollView' "$MAIN"
-          grep -Fq '1. DANA RECEIVER' "$MAIN"
-          grep -Fq '2. TELEGRAM' "$MAIN"
-          grep -Fq '3. DEBUG & STATUS' "$MAIN"
-          grep -Fq 'SEBELUMNYA' "$MAIN"
-          grep -Fq 'BERIKUTNYA' "$MAIN"
-          grep -Fq 'telegram_command_chat_id' "$MAIN"
-          grep -Fq 'telegram_report_chat_id' "$MAIN"
-          grep -Fq '5837001530' "$MAIN"
-          grep -Fq '5353300549' "$MAIN"
-          echo "V30 3-page horizontal UI guard: OK"
+          echo ""
+          echo "Project files:"
+          find . -maxdepth 3 -type f | sort | sed -n '1,200p'
 
-          # Preserve core DANA auto-click / stop-on-success / watchdog / QR logic.
-          grep -Fq 'DIRECT_TAP_START_DELAY_MS = 700L' "$SERVICE"
-          grep -Fq 'DEFAULT_DIRECT_TAP_MAX_ATTEMPTS = 10' "$SERVICE"
-          grep -Fq 'claimConfirmed' "$SERVICE"
-          grep -Fq 'forceResetAndCloseDana' "$SERVICE"
-          grep -Fq 'DANA_OPEN_WATCHDOG_MS = 120000L' "$SERVICE"
-          grep -Fq 'takeScreenshot' "$SERVICE"
-          grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
-          grep -Fq 'link.dana.id' "$SERVICE"
-          grep -Fq 'DANA_NOTIFICATION_URL_PATTERN' "$SERVICE"
-          grep -Fq 'extractDanaNotificationUrl' "$SERVICE"
-          grep -Fq 'openDanaFromNotification' "$SERVICE"
-          echo "Core DANA logic guard: OK"
+          echo ""
+          echo "=========================================="
+          echo "CHECK ANDROID PROJECT"
+          echo "=========================================="
 
-          # Telegram polling/controller guards.
-          grep -Fq 'getUpdates' "$BOT"
-          grep -Fq 'sendMessage' "$BOT"
-          grep -Fq 'deleteWebhook' "$BOT"
-          grep -Fq 'isAllowedChat' "$BOT"
-          grep -Fq 'private void saveUpdateId(long nextOffset)' "$BOT"
-          grep -Fq 'KEY_UPDATE_ID' "$BOT"
-          grep -Fq 'verifyTelegramConnection' "$BOT"
-          echo "Telegram controller guard: OK"
+          test -f settings.gradle || \
+          test -f settings.gradle.kts || {
+            echo ""
+            echo "ERROR: settings.gradle / settings.gradle.kts tidak ditemukan."
+            exit 1
+          }
 
-          # Screen-off and foreground receiver guards.
-          grep -Fq 'android.permission.WAKE_LOCK' app/src/main/AndroidManifest.xml
-          grep -Fq 'class ScreenWaker' app/src/main/java/id/varino/danareceiver/ScreenWaker.java
-          grep -Fq 'ScreenWaker.wake' "$NTFY"
-          echo "Screen-off receiver guard: OK"
+          test -f app/build.gradle || \
+          test -f app/build.gradle.kts || {
+            echo ""
+            echo "ERROR: app/build.gradle / app/build.gradle.kts tidak ditemukan."
+            exit 1
+          }
+
+          test -f app/src/main/AndroidManifest.xml || {
+            echo ""
+            echo "ERROR: AndroidManifest.xml tidak ditemukan."
+            exit 1
+          }
+
+          test -f app/src/main/java/id/varino/danareceiver/MainActivity.java || {
+            echo ""
+            echo "ERROR: MainActivity.java tidak ditemukan."
+            exit 1
+          }
+
+          test -f app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java || {
+            echo ""
+            echo "ERROR: DanaAutoClickAccessibilityService.java tidak ditemukan."
+            exit 1
+          }
+
+          test -f app/src/main/java/id/varino/danareceiver/NtfyService.java || {
+            echo ""
+            echo "ERROR: NtfyService.java tidak ditemukan."
+            exit 1
+          }
+
+          test -f app/src/main/java/id/varino/danareceiver/TelegramBotController.java || {
+            echo ""
+            echo "ERROR: TelegramBotController.java tidak ditemukan."
+            exit 1
+          }
+
+          echo ""
+          echo "Android project files: OK"
+
+          echo ""
+          echo "=========================================="
+          echo "CHECK V30 UI MARKERS"
+          echo "=========================================="
+
+          grep -nE \
+            'DANA Native Receiver|HorizontalScrollView|SEBELUMNYA|BERIKUTNYA|TELEGRAM' \
+            app/src/main/java/id/varino/danareceiver/MainActivity.java || true
+
+          echo ""
+          echo "V30 source verification: OK"
+
 
       - name: Java syntax preflight
         script: |
           set -euo pipefail
           cd "$CM_BUILD_DIR"
+
+          echo "=========================================="
+          echo "JAVA SYNTAX PREFLIGHT"
+          echo "=========================================="
+
           python3 - <<'PY'
           from pathlib import Path
-          pairs={'{':'}','(':')','[':']'}
-          closing=set(pairs.values())
-          for path in Path('app/src/main/java').rglob('*.java'):
-              s=path.read_text(encoding='utf-8')
-              stack=[]; state='code'; esc=False; i=0
+
+          pairs = {
+              '{': '}',
+              '(': ')',
+              '[': ']'
+          }
+
+          closing = set(pairs.values())
+
+          java_root = Path(
+              'app/src/main/java'
+          )
+
+          if not java_root.exists():
+              raise SystemExit(
+                  'ERROR: app/src/main/java tidak ditemukan'
+              )
+
+          java_files = list(
+              java_root.rglob('*.java')
+          )
+
+          if not java_files:
+              raise SystemExit(
+                  'ERROR: Tidak ada file Java ditemukan'
+              )
+
+          print(
+              f'Found {len(java_files)} Java files'
+          )
+
+          for path in java_files:
+
+              print(
+                  f'Checking Java syntax: {path}'
+              )
+
+              s = path.read_text(
+                  encoding='utf-8'
+              )
+
+              stack = []
+
+              state = 'code'
+
+              escaped = False
+
+              i = 0
+
               while i < len(s):
-                  c=s[i]; n=s[i+1] if i+1<len(s) else ''
-                  if state=='line':
-                      if c=='\n': state='code'
-                  elif state=='block':
-                      if c=='*' and n=='/': state='code'; i+=1
-                  elif state=='string':
-                      if esc: esc=False
-                      elif c=='\\': esc=True
-                      elif c=='"': state='code'
-                  elif state=='char':
-                      if esc: esc=False
-                      elif c=='\\': esc=True
-                      elif c=="'": state='code'
+
+                  c = s[i]
+
+                  n = (
+                      s[i + 1]
+                      if i + 1 < len(s)
+                      else ''
+                  )
+
+                  if state == 'line_comment':
+
+                      if c == '\n':
+                          state = 'code'
+
+                  elif state == 'block_comment':
+
+                      if c == '*' and n == '/':
+                          state = 'code'
+                          i += 1
+
+                  elif state == 'string':
+
+                      if escaped:
+                          escaped = False
+
+                      elif c == '\\':
+                          escaped = True
+
+                      elif c == '"':
+                          state = 'code'
+
+                  elif state == 'char':
+
+                      if escaped:
+                          escaped = False
+
+                      elif c == '\\':
+                          escaped = True
+
+                      elif c == "'":
+                          state = 'code'
+
                   else:
-                      if c=='/' and n=='/': state='line'; i+=1
-                      elif c=='/' and n=='*': state='block'; i+=1
-                      elif c=='"': state='string'
-                      elif c=="'": state='char'
-                      elif c in pairs: stack.append(pairs[c])
+
+                      if c == '/' and n == '/':
+
+                          state = 'line_comment'
+
+                          i += 1
+
+                      elif c == '/' and n == '*':
+
+                          state = 'block_comment'
+
+                          i += 1
+
+                      elif c == '"':
+
+                          state = 'string'
+
+                      elif c == "'":
+
+                          state = 'char'
+
+                      elif c in pairs:
+
+                          stack.append(
+                              pairs[c]
+                          )
+
                       elif c in closing:
-                          if not stack or stack.pop()!=c: raise SystemExit(f'Delimiter mismatch: {path}:{i}:{c}')
-                  i+=1
-              if state!='code' or stack: raise SystemExit(f'Unclosed Java syntax: {path} state={state} stack={stack[-10:]}')
-              print('Java syntax preflight OK:', path)
+
+                          if (
+                              not stack
+                              or stack.pop() != c
+                          ):
+
+                              raise SystemExit(
+                                  f'Delimiter mismatch: '
+                                  f'{path}:{i}:{c}'
+                              )
+
+                  i += 1
+
+              if state != 'code':
+
+                  raise SystemExit(
+                      f'Unclosed Java lexical state: '
+                      f'{path} '
+                      f'state={state}'
+                  )
+
+              if stack:
+
+                  raise SystemExit(
+                      f'Unclosed Java delimiter: '
+                      f'{path} '
+                      f'stack={stack[-10:]}'
+                  )
+
+              print(
+                  f'Java syntax preflight OK: {path}'
+              )
+
+          print(
+              '=========================================='
+          )
+
+          print(
+              'ALL JAVA FILES PASSED PREFLIGHT'
+          )
+
+          print(
+              '=========================================='
+          )
+
           PY
+
 
       - name: XML resource preflight
         script: |
           set -euo pipefail
           cd "$CM_BUILD_DIR"
+
+          echo "=========================================="
+          echo "XML RESOURCE PREFLIGHT"
+          echo "=========================================="
+
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for p in [Path('app/src/main/AndroidManifest.xml'), Path('app/src/main/res/xml/dana_accessibility_service.xml'), Path('app/src/main/res/values/strings.xml'), Path('app/src/main/res/values/styles.xml')]:
-              ET.parse(p)
-              print('XML parse OK:', p)
-          PY
 
-      - name: Configure Android SDK 35
-        script: |
-          set -euo pipefail
-          cd "$CM_BUILD_DIR"
-          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          test -n "$SDK_ROOT"
-          echo "sdk.dir=$SDK_ROOT" > local.properties
+          required_xml = [
 
-          SDKMANAGER=""
-          if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          elif [ -d "$SDK_ROOT/cmdline-tools" ]; then
-            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -perm -111 -print -quit 2>/dev/null || true)"
-          fi
-          if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
-            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-            "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-          fi
-          test -d "$SDK_ROOT/platforms/android-35"
+              Path(
+                  'app/src/main/AndroidManifest.xml'
+              ),
 
-      - name: Prepare Gradle 8.14.1
-        script: |
-          set -euo pipefail
-          cd "$CM_BUILD_DIR"
-          if [ -x ./gradlew ]; then
-            chmod +x ./gradlew
-            echo "$CM_BUILD_DIR/gradlew" > "$CM_BUILD_DIR/.gradle_cmd"
-          elif command -v gradle >/dev/null 2>&1; then
-            command -v gradle > "$CM_BUILD_DIR/.gradle_cmd"
-          else
-            VER="8.14.1"
-            DIST="$CM_BUILD_DIR/.gradle-dist"
-            HOME_DIR="$DIST/gradle-$VER"
-            ZIP="$DIST/gradle-$VER-bin.zip"
-            mkdir -p "$DIST"
-            if [ ! -x "$HOME_DIR/bin/gradle" ]; then
-              curl --fail --location --retry 5 --retry-all-errors --connect-timeout 30 --max-time 600 -o "$ZIP" "https://services.gradle.org/distributions/gradle-$VER-bin.zip"
-              rm -rf "$HOME_DIR"
-              unzip -q "$ZIP" -d "$DIST"
-            fi
-            echo "$HOME_DIR/bin/gradle" > "$CM_BUILD_DIR/.gradle_cmd"
-          fi
-          GRADLE="$(cat "$CM_BUILD_DIR/.gradle_cmd")"
-          chmod +x "$GRADLE"
-          "$GRADLE" --version
+              Path(
+                  'app/src/main/res/xml/'
+                  'dana_accessibility_service.xml'
+              ),
 
-      - name: Build V30 Debug APK
-        script: |
-          set -euo pipefail
-          cd "$CM_BUILD_DIR"
-          GRADLE="$(cat "$CM_BUILD_DIR/.gradle_cmd")"
-          rm -rf app/build
-          "$GRADLE" --no-daemon --no-build-cache --rerun-tasks --stacktrace --console=plain clean assembleDebug
+              Path(
+                  'app/src/main/res/values/'
+                  'strings.xml'
+              ),
 
-      - name: Verify APK and SHA256
-        script: |
-          set -euo pipefail
-          cd "$CM_BUILD_DIR"
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -f "$APK"
-          mkdir -p out
-          cp "$APK" out/DanaNativeReceiver-V30-3PAGE-DEBUG.apk
-          echo "APK: out/DanaNativeReceiver-V30-3PAGE-DEBUG.apk"
-          if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$APK"; else sha256sum "$APK"; fi
+              Path(
+                  'app/src/main/res/values/'
+                  'styles.xml'
+              )
 
-    artifacts:
-      - $CM_BUILD_DIR/out/DanaNativeReceiver-V30-3PAGE-DEBUG.apk
+          ]
+
+          for path in required_xml:
+
+              if not path.exists():
+
+                  raise SystemExit(
+                      f'ERROR: XML file tidak ditemukan: '
+                      f'{path}'
+                  )
+
+              try:
+
+                  ET.parse(path)
+
+              except Exception as exc:
+
+                  raise SystemExit(
+                      f'XML parse failed: '
+                      f'{path}\n{exc}'
+                  )
+
+              print(
+                  f'

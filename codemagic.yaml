@@ -28,6 +28,7 @@ workflows:
             ZIP_FILE=""
 
             for pattern in \
+              "$ROOT"/DanaNativeReceiver_V30_NOTIFICATION_AUTOOPEN_TAP_FIXED_FULL.zip \
               "$ROOT"/DanaNativeReceiver_V30*.zip \
               "$ROOT"/DanaNativeReceiver*.zip \
               "$ROOT"/*.zip; do
@@ -79,6 +80,10 @@ workflows:
 
           SERVICE="$(find app/src/main/java -type f -name 'DanaAutoClickAccessibilityService.java' -print -quit)"
           MANIFEST="app/src/main/AndroidManifest.xml"
+          BUILD_FILE="app/build.gradle"
+          if [ ! -f "$BUILD_FILE" ]; then
+            BUILD_FILE="app/build.gradle.kts"
+          fi
 
           if [ -z "$SERVICE" ]; then
             echo "ERROR: DanaAutoClickAccessibilityService.java tidak ditemukan."
@@ -112,6 +117,12 @@ workflows:
           # Claim/result state must remain.
           grep -Fq 'hasPendingClaim' "$SERVICE"
           grep -Fq 'awaitingClaimResult' "$SERVICE"
+          grep -Fq 'private String getActivePackageSafely()' "$SERVICE"
+
+          # QR/notification dependency must remain in the app module.
+          grep -Fq 'com.google.mlkit:barcode-scanning:17.3.0' "$BUILD_FILE"
+          grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
+          grep -Fq 'TakeScreenshotCallback' "$SERVICE"
 
           # QR path must remain.
           grep -Fq 'takeScreenshot' "$SERVICE"
@@ -244,21 +255,43 @@ workflows:
                   "ERROR: callback TAP/screenshot tidak ditemukan."
               )
 
-          # Avoid the classic Java anonymous-callback mistake:
-          # DebugTrace(... this, ...) where `this` means the callback object.
-          if re.search(
-              r"new\s+(GestureResultCallback|TakeScreenshotCallback).*?"
-              r"DebugTrace\.[A-Za-z_]+\(\s*this\s*,",
-              text,
-              re.S
-          ):
-              raise SystemExit(
-                  "ERROR: DebugTrace callback masih menggunakan `this` "
-                  "dari anonymous callback."
-              )
+          # Check `this` only INSIDE each anonymous callback block.
+          # A file-wide regex is incorrect because the service legitimately uses
+          # DebugTrace(... this, ...) outside callbacks.
+          clean = strip_non_code(text)
 
-          print("Java structure: OK")
-          print(f"Gesture/screenshot callback blocks: {len(callback_blocks)}")
+          def matching_brace(source, start):
+              depth = 0
+              for i in range(start, len(source)):
+                  if source[i] == "{":
+                      depth += 1
+                  elif source[i] == "}":
+                      depth -= 1
+                      if depth == 0:
+                          return i
+              raise SystemExit("ERROR: anonymous callback brace tidak tertutup")
+
+          checked = 0
+          for match in re.finditer(
+              r"new\s+(GestureResultCallback|TakeScreenshotCallback)\s*\(\s*\)\s*\{",
+              clean
+          ):
+              checked += 1
+              start = clean.find("{", match.start())
+              end = matching_brace(clean, start)
+              block = text[start:end + 1]
+
+              if re.search(r"DebugTrace\.[A-Za-z_]+\(\s*this\s*,", block):
+                  raise SystemExit(
+                      f"ERROR: {match.group(1)} memakai DebugTrace(... this, ...) "
+                      "di dalam anonymous callback."
+                  )
+
+          if checked == 0:
+              raise SystemExit("ERROR: callback GestureResultCallback/TakeScreenshotCallback tidak ditemukan")
+
+          print("Java callback context: OK")
+          print(f"Gesture/screenshot callback blocks checked: {checked}")
           PY
 
       - name: Verify XML resources

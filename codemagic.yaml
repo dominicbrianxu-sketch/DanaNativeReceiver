@@ -22,10 +22,12 @@ workflows:
 
           PROJECT_DIR=""
 
+          # 1) If the Android project itself is the repository root, use it.
           if [ -f "$ROOT/settings.gradle" ] || [ -f "$ROOT/settings.gradle.kts" ]; then
             PROJECT_DIR="$ROOT"
             echo "Android project detected at repository root."
           else
+            # 2) Otherwise find the project ZIP.
             ZIP_FILE=""
             for pattern in \
               "$ROOT"/DanaNativeReceiver*.zip \
@@ -94,21 +96,22 @@ workflows:
           BOOT="app/src/main/java/id/varino/danareceiver/BootReceiver.java"
           BUILD_FILE="app/build.gradle"
 
+          # Required files.
           for f in "$MANIFEST" "$ACCESS_XML" "$SERVICE" "$DEBUG_TRACE" "$MAIN" "$NTFY" "$BOOT" "$BUILD_FILE"; do
             test -f "$f"
           done
-
           echo "Required project files: OK"
 
+          # Package/version consistency.
           grep -Fq 'namespace '\''id.varino.danareceiver'\''' "$BUILD_FILE"
           grep -Fq 'applicationId '\''id.varino.danareceiver'\''' "$BUILD_FILE"
           grep -Fq 'compileSdk 35' "$BUILD_FILE"
           grep -Fq 'targetSdk 35' "$BUILD_FILE"
           grep -Fq 'versionCode 28' "$BUILD_FILE"
           grep -Fq "versionName '1.29-race-mode-cache-cleaner'" "$BUILD_FILE"
-
           echo "Android package + SDK + V29 version metadata: OK"
 
+          # Debug trace + UI instrumentation.
           grep -Fq 'class DebugTrace' "$DEBUG_TRACE"
           grep -Fq 'fullSnapshot' "$DEBUG_TRACE"
           grep -Fq 'dana_debug_trace.log' "$DEBUG_TRACE"
@@ -116,26 +119,26 @@ workflows:
           grep -Fq 'traceAccessibilityEvent' "$SERVICE"
           grep -Fq 'DebugTrace.detail' "$SERVICE"
           grep -Fq 'DebugTrace.detail' "$NTFY"
-
           echo "Full debug instrumentation: OK"
 
+          # Accessibility registration/capabilities.
           grep -Fq 'DanaAutoClickAccessibilityService' "$MANIFEST"
           grep -Fq 'android.permission.BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
           grep -Fq 'android.accessibilityservice.AccessibilityService' "$MANIFEST"
           grep -Fq 'android:canRetrieveWindowContent="true"' "$ACCESS_XML"
           grep -Fq 'android:canPerformGestures="true"' "$ACCESS_XML"
           grep -Fq 'android:canTakeScreenshot="true"' "$ACCESS_XML"
+          echo "AccessibilityService registration/capabilities: OK"
 
-          echo "Accessibility registration/capabilities: OK"
-
+          # QR scanner.
           grep -Fq 'com.google.mlkit:barcode-scanning:17.3.0' "$BUILD_FILE"
           grep -Fq 'Barcode.FORMAT_QR_CODE' "$SERVICE"
           grep -Fq 'takeScreenshot' "$SERVICE"
           grep -Fq 'TakeScreenshotCallback' "$SERVICE"
           grep -Fq 'link.dana.id' "$SERVICE"
-
           echo "ML Kit QR + screenshot path: OK"
 
+          # Direct-tap implementation and DANA guards.
           grep -Fq 'scheduleDirectEnvelopeTap' "$SERVICE"
           grep -Fq 'startDirectTapSequence' "$SERVICE"
           grep -Fq 'dispatchNextDirectTap' "$SERVICE"
@@ -156,9 +159,9 @@ workflows:
           grep -Fq 'hasPendingClaim' "$SERVICE"
           grep -Fq 'awaitingClaimResult' "$SERVICE"
           grep -Fq 'private String getActivePackageSafely()' "$SERVICE"
-
           echo "10-point tap + UI verification + learned coordinate + DANA guards: OK"
 
+          # Auto cache cleaner.
           CACHE_CLEANER="app/src/main/java/id/varino/danareceiver/CacheCleaner.java"
 
           test -f "$CACHE_CLEANER"
@@ -173,7 +176,9 @@ workflows:
           grep -Fq 'TimeUnit.MINUTES' "$NTFY"
           grep -Fq '30, 30, TimeUnit.MINUTES' "$NTFY"
 
+          # The cleaner must be shut down with the service.
           grep -Fq 'cacheScheduler.shutdownNow()' "$NTFY"
+
           grep -Fq 'getApplicationContext().getCacheDir()' "$NTFY"
 
           if grep -Fq 'getCodeCache()' "$NTFY"; then
@@ -184,6 +189,7 @@ workflows:
           echo "Cache cleaner uses cacheDir only; no unsupported getCodeCache() call."
           echo "Auto Cache Cleaner 30-minute integration: OK"
 
+          # Verify callback context.
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -195,7 +201,6 @@ workflows:
               out = list(text)
               i = 0
               state = "code"
-
               while i < len(text):
                   c = text[i]
                   n = text[i + 1] if i + 1 < len(text) else ""
@@ -235,16 +240,13 @@ workflows:
                           out[i] = out[i + 1] = " "
                           i += 1
                           state = "line"
-
                       elif c == "/" and n == "*":
                           out[i] = out[i + 1] = " "
                           i += 1
                           state = "block"
-
                       elif c == '"':
                           out[i] = " "
                           state = "string"
-
                       elif c == "'":
                           out[i] = " "
                           state = "char"
@@ -257,17 +259,13 @@ workflows:
 
           def matching_brace(text, start):
               depth = 0
-
               for i in range(start, len(text)):
                   if text[i] == "{":
                       depth += 1
-
                   elif text[i] == "}":
                       depth -= 1
-
                       if depth == 0:
                           return i
-
               raise SystemExit("Unclosed callback brace")
 
           found = 0
@@ -277,15 +275,11 @@ workflows:
               clean
           ):
               found += 1
-
               start = clean.find("{", m.start())
               end = matching_brace(clean, start)
               block = src[start:end + 1]
 
-              if re.search(
-                  r"DebugTrace\.[A-Za-z_]+\(\s*this\s*,",
-                  block
-              ):
+              if re.search(r"DebugTrace\.[A-Za-z_]+\(\s*this\s*,", block):
                   raise SystemExit(
                       f"ERROR: {m.group(1)} contains DebugTrace(...this,...)"
                   )
@@ -295,21 +289,14 @@ workflows:
                   "ERROR: no GestureResultCallback/TakeScreenshotCallback found"
               )
 
-          print(
-              f"Callback-context preflight: OK "
-              f"({found} callback blocks checked)"
-          )
+          print(f"Callback-context preflight: OK ({found} callback blocks checked)")
           PY
 
+          # Delimiter/lexical check for every Java file.
           python3 - <<'PY'
           from pathlib import Path
 
-          pairs = {
-              "{": "}",
-              "(": ")",
-              "[": "]"
-          }
-
+          pairs = {"{": "}", "(": ")", "[": "]"}
           closing = set(pairs.values())
 
           for path in Path("app/src/main/java").rglob("*.java"):
@@ -353,20 +340,15 @@ workflows:
                       if c == "/" and n == "/":
                           state = "line"
                           i += 1
-
                       elif c == "/" and n == "*":
                           state = "block"
                           i += 1
-
                       elif c == '"':
                           state = "string"
-
                       elif c == "'":
                           state = "char"
-
                       elif c in pairs:
                           stack.append(pairs[c])
-
                       elif c in closing:
                           if not stack or stack.pop() != c:
                               raise SystemExit(
@@ -377,13 +359,13 @@ workflows:
 
               if state != "code" or stack:
                   raise SystemExit(
-                      f"Unclosed Java syntax: {path} "
-                      f"state={state} stack={stack[-10:]}"
+                      f"Unclosed Java syntax: {path} state={state} stack={stack[-10:]}"
                   )
 
               print(f"Java syntax preflight: OK {path}")
           PY
 
+          # XML parse preflight.
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
@@ -426,26 +408,13 @@ workflows:
 
           if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
             SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-
           elif [ -d "$SDK_ROOT/cmdline-tools" ]; then
-            SDKMANAGER="$(
-              find "$SDK_ROOT/cmdline-tools" \
-                -type f \
-                -name sdkmanager \
-                -perm -111 \
-                -print \
-                -quit 2>/dev/null || true
-            )"
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -perm -111 -print -quit 2>/dev/null || true)"
           fi
 
           if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
             yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-
-            "$SDKMANAGER" \
-              "platform-tools" \
-              "platforms;android-35" \
-              "build-tools;35.0.0"
-
+            "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
           else
             echo "WARNING: sdkmanager tidak ditemukan; memakai SDK yang sudah tersedia di Codemagic."
           fi
@@ -515,12 +484,7 @@ workflows:
           echo "BUILD DANA NATIVE RECEIVER V29"
           echo "=================================================="
 
-          "$GRADLE" \
-            --no-daemon \
-            --stacktrace \
-            --console=plain \
-            clean \
-            assembleDebug
+          "$GRADLE" --no-daemon --stacktrace --console=plain clean assembleDebug
 
       - name: Verify V29 APK
         script: |
@@ -532,12 +496,7 @@ workflows:
 
           if [ ! -f "$APK" ]; then
             echo "ERROR: app-debug.apk tidak ditemukan."
-
-            find "$PROJECT_DIR" \
-              -type f \
-              -name '*.apk' \
-              -print || true
-
+            find "$PROJECT_DIR" -type f -name '*.apk' -print || true
             exit 1
           fi
 
@@ -552,13 +511,12 @@ workflows:
             sha256sum "$APK"
           fi
 
+          # Put a stable copy in the build root.
           mkdir -p "$ROOT/out"
 
-          cp "$APK" \
-            "$ROOT/out/DanaNativeReceiver-V29-DEBUG.apk"
+          cp "$APK" "$ROOT/out/DanaNativeReceiver-V29-DEBUG.apk"
 
-          ls -lh \
-            "$ROOT/out/DanaNativeReceiver-V29-DEBUG.apk"
+          ls -lh "$ROOT/out/DanaNativeReceiver-V29-DEBUG.apk"
 
     artifacts:
       - $CM_BUILD_DIR/out/DanaNativeReceiver-V29-DEBUG.apk

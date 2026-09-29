@@ -1,6 +1,6 @@
 workflows:
-  dana-native-receiver-v33-fullscreen-battery-telegram:
-    name: DanaNativeReceiver V33 - FULL-SCREEN + BATTERY PERMISSION + TELEGRAM BOT CONTROL
+  dana-native-receiver-v33-notification-link:
+    name: DanaNativeReceiver V33 - NOTIFICATION LINK AUTO-OPEN + TELEGRAM BOT CONTROL
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -17,7 +17,7 @@ workflows:
 
           echo "=================================================="
           echo "DANA NATIVE RECEIVER V33"
-          echo "FULL-SCREEN + BATTERY PERMISSION + TELEGRAM BOT"
+          echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
           PROJECT_DIR=""
@@ -109,10 +109,32 @@ workflows:
 
           echo "PROJECT_DIR=$PROJECT_DIR"
 
-          # ==================================================
-          # TELEGRAM BOT SOURCE GUARD
-          # ==================================================
+          # Verify that the selected Android source is V33 before any other
+          # cross-check is allowed to run.
 
+          BUILD_FILE="$PROJECT_DIR/app/build.gradle"
+
+          grep -Fq \
+            "versionCode 29" \
+            "$BUILD_FILE" || {
+
+            echo "ERROR: Selected source is not V33 (versionCode 29 missing)."
+
+            exit 1
+          }
+
+          grep -Fq \
+            "versionName '1.29-fullscreen-battery-permission'" \
+            "$BUILD_FILE" || {
+
+            echo "ERROR: Selected source is not V33 (versionName mismatch)."
+
+            exit 1
+          }
+
+          echo "Selected V33 source: OK"
+
+          # Telegram polling source guard.
           BOT_CONTROLLER="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
 
           test -f "$BOT_CONTROLLER"
@@ -122,7 +144,6 @@ workflows:
             "$BOT_CONTROLLER" || {
 
             echo "ERROR: TelegramBotController.java is not the expected V33 source."
-            echo "Required polling/update-id call was not found."
 
             exit 1
           }
@@ -139,7 +160,7 @@ workflows:
           echo "TelegramBotController source guard: OK"
 
 
-      - name: Cross-check V33 logic and Telegram Bot layer
+      - name: Cross-check raw V33 logic and Telegram Bot layer
         script: |
           set -euo pipefail
 
@@ -149,7 +170,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "CROSS-CHECK V33 + TELEGRAM GROUP BOT"
+          echo "CROSS-CHECK RAW V33 + TELEGRAM GROUP BOT"
           echo "=================================================="
 
           BASE="app/src/main/java/id/varino/danareceiver"
@@ -166,10 +187,6 @@ workflows:
           BOOT="$BASE/BootReceiver.java"
           BOT="$BASE/TelegramBotController.java"
           BOT_SERVICE="$BASE/TelegramBotService.java"
-
-          # ==================================================
-          # REQUIRED FILES
-          # ==================================================
 
           for f in \
             "$MANIFEST" \
@@ -425,7 +442,7 @@ workflows:
 
 
           # ==================================================
-          # V33 FULL-SCREEN INTENT + BATTERY
+          # V33 FULL-SCREEN + BATTERY
           # ==================================================
 
           grep -Fq \
@@ -450,10 +467,6 @@ workflows:
 
           grep -Fq \
             'isIgnoringBatteryOptimizations' \
-            "$MAIN"
-
-          grep -Fq \
-            'Matikan Optimasi Baterai (Unrestricted)' \
             "$MAIN"
 
           echo "V33 full-screen + battery permission controls: OK"
@@ -629,7 +642,7 @@ workflows:
 
 
           echo "=================================================="
-          echo "V33 + TELEGRAM GROUP BOT CROSS-CHECK PASSED"
+          echo "RAW V33 + TELEGRAM GROUP BOT CROSS-CHECK PASSED"
           echo "=================================================="
 
 
@@ -910,17 +923,17 @@ workflows:
 
           ROOT="$CM_BUILD_DIR"
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+
           GRADLE="$(cat "$ROOT/.codemagic_gradle")"
 
           cd "$PROJECT_DIR"
 
           echo "=================================================="
           echo "BUILD DANA NATIVE RECEIVER V33"
-          echo "FULL-SCREEN + BATTERY PERMISSION"
-          echo "TELEGRAM BOT CONTROL"
+          echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
-          # Force clean compile from the selected V33 source archive.
+          # Force a clean compile from the selected V33 source archive.
 
           rm -rf \
             "$PROJECT_DIR/app/build"

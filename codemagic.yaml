@@ -1,6 +1,6 @@
 workflows:
-  dana-native-receiver-v34-ad-close:
-    name: DanaNativeReceiver V34 - AD CLOSE + NOTIFICATION LINK AUTO-OPEN + TELEGRAM BOT CONTROL
+  dana-native-receiver-v38-merged-diagnostics-screen-off:
+    name: DanaNativeReceiver V38 - DETAILED DANA OPEN DIAGNOSTICS + AD CLOSE + TELEGRAM BOT CONTROL
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -8,7 +8,7 @@ workflows:
       java: 17
 
     scripts:
-      - name: Prepare V34 Android project
+      - name: Prepare V38 Android project
         script: |
           set -euo pipefail
 
@@ -16,7 +16,7 @@ workflows:
           cd "$ROOT"
 
           echo "=================================================="
-          echo "DANA NATIVE RECEIVER V34"
+          echo "DANA NATIVE RECEIVER V38"
           echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
@@ -28,15 +28,15 @@ workflows:
           else
             ZIP_FILE=""
 
-            # Prefer the exact V34 source archive. This prevents Codemagic from
+            # Prefer the exact V38 source archive. This prevents Codemagic from
             # accidentally selecting an older DanaNativeReceiver*.zip when
             # several archives exist in the workspace.
-            PREFERRED_ZIP="$ROOT/DanaNativeReceiver_V34_AD_CLOSE_FIXED.zip"
+            PREFERRED_ZIP="$ROOT/DanaNativeReceiver_V38_MERGED_DIAGNOSTICS_SCREEN_OFF.zip"
             if [ -f "$PREFERRED_ZIP" ]; then
               ZIP_FILE="$PREFERRED_ZIP"
             else
               for pattern in \
-                "$ROOT"/DanaNativeReceiver_V34*.zip \
+                "$ROOT"/DanaNativeReceiver_V38*.zip \
                 "$ROOT"/DanaNativeReceiver*.zip; do
                 if [ -f "$pattern" ]; then
                   ZIP_FILE="$pattern"
@@ -79,26 +79,26 @@ workflows:
           echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
           echo "PROJECT_DIR=$PROJECT_DIR"
 
-          # Verify that the selected Android source is V34 before any other
+          # Verify that the selected Android source is V36 before any other
           # cross-check is allowed to run.
           BUILD_FILE="$PROJECT_DIR/app/build.gradle"
-          grep -Fq "versionCode 34" "$BUILD_FILE" || {
-            echo "ERROR: Selected source is not V34 (versionCode 34 missing)."
+          grep -Fq "versionCode 38" "$BUILD_FILE" || {
+            echo "ERROR: Selected source is not V38 (versionCode 38 missing)."
             exit 1
           }
-          grep -Fq "versionName '1.34-ad-close-protection'" "$BUILD_FILE" || {
-            echo "ERROR: Selected source is not V34 (versionName mismatch)."
+          grep -Fq "versionName '1.38-merged-diagnostics-screen-off'" "$BUILD_FILE" || {
+            echo "ERROR: Selected source is not V38 (versionName mismatch)."
             exit 1
           }
-          echo "Selected V34 source: OK"
+          echo "Selected V38 source: OK"
 
-          # Hard guard against the exact compile error seen in V34: the polling
+          # Hard guard against the exact compile error seen in V36: the polling
           # loop calls saveUpdateId(long), so the selected source MUST contain
           # that method before Gradle is allowed to compile anything.
           BOT_CONTROLLER="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
           test -f "$BOT_CONTROLLER"
           grep -Fq 'if (id >= 0) saveUpdateId(id + 1L);' "$BOT_CONTROLLER" || {
-            echo "ERROR: TelegramBotController.java is not the expected V34 source (call missing)."
+            echo "ERROR: TelegramBotController.java is not the expected V38 source (call missing)."
             exit 1
           }
           grep -Fq 'private void saveUpdateId(long nextOffset)' "$BOT_CONTROLLER" || {
@@ -109,21 +109,21 @@ workflows:
 
           SERVICE="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
           test -f "$SERVICE"
-          grep -Fq 'versionCode 34' "$PROJECT_DIR/app/build.gradle" || {
-            echo "ERROR: Selected source is not V34 (versionCode 34 missing)."
+          grep -Fq 'versionCode 38' "$PROJECT_DIR/app/build.gradle" || {
+            echo "ERROR: Selected source is not V38 (versionCode 38 missing)."
             exit 1
           }
-          grep -Fq "versionName '1.34-ad-close-protection'" "$PROJECT_DIR/app/build.gradle" || {
-            echo "ERROR: Selected source is not V34 (versionName mismatch)."
+          grep -Fq "versionName '1.38-merged-diagnostics-screen-off'" "$PROJECT_DIR/app/build.gradle" || {
+            echo "ERROR: Selected source is not V38 (versionName mismatch)."
             exit 1
           }
           grep -Fq 'maybeDismissBlockingAdIfPresent' "$SERVICE" || {
-            echo "ERROR: V34 ad-close protection missing from selected source."
+            echo "ERROR: V36 ad-close protection missing from selected source."
             exit 1
           }
-          echo "V34 source identity + AD CLOSE protection guard: OK"
+          echo "V38 source identity + AD CLOSE protection guard: OK"
 
-      - name: Cross-check raw V34 logic and Telegram Bot layer
+      - name: Cross-check raw V36 logic and Telegram Bot layer
         script: |
           set -euo pipefail
 
@@ -132,7 +132,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "CROSS-CHECK RAW V34 + AD CLOSE + TELEGRAM GROUP BOT"
+          echo "CROSS-CHECK RAW V38 + DETAILED OPEN DIAGNOSTICS + AD CLOSE + TELEGRAM GROUP BOT"
           echo "=================================================="
 
           BASE="app/src/main/java/id/varino/danareceiver"
@@ -155,14 +155,30 @@ workflows:
 
           echo "Required files: OK"
 
-          # Raw V34 identity/version remains unchanged.
+          # Raw V36 identity/version remains unchanged.
           grep -Fq "namespace 'id.varino.danareceiver'" "$BUILD_FILE"
           grep -Fq "applicationId 'id.varino.danareceiver'" "$BUILD_FILE"
           grep -Fq 'compileSdk 35' "$BUILD_FILE"
           grep -Fq 'targetSdk 35' "$BUILD_FILE"
-          grep -Fq 'versionCode 34' "$BUILD_FILE"
-          grep -Fq "versionName '1.34-ad-close-protection'" "$BUILD_FILE"
-          echo "Raw V34 build metadata: OK"
+          grep -Fq 'versionCode 38' "$BUILD_FILE"
+          grep -Fq "versionName '1.38-merged-diagnostics-screen-off'" "$BUILD_FILE"
+          echo "Raw V38 build metadata: OK"
+
+          # V38 detailed diagnostics for failed/uncertain DANA opening.
+          grep -Fq 'OPEN_FAIL_DANA_NOT_INSTALLED' "$NTFY"
+          grep -Fq 'OPEN_FAIL_NO_HANDLER' "$NTFY"
+          grep -Fq 'OPEN_FAIL_ACTIVITY_NOT_FOUND' "$NTFY"
+          grep -Fq 'OPEN_FAIL_SECURITY_EXCEPTION' "$NTFY"
+          grep -Fq 'OPEN_FAIL_UI_NOT_CONFIRMED' "$NTFY"
+          grep -Fq 'OPEN_WARNING_ACCESSIBILITY_DISABLED' "$NTFY"
+          grep -Fq 'OPEN_WARNING_FULL_SCREEN_BLOCKED' "$NTFY"
+          grep -Fq 'DANA_PACKAGE_INSTALLED=true' "$NTFY"
+          grep -Fq 'OPEN_HANDLER=' "$NTFY"
+          grep -Fq 'SCREEN_INTERACTIVE=' "$NTFY"
+          grep -Fq 'BATTERY_OPTIMIZATION_IGNORED=' "$NTFY"
+          grep -Fq 'ACCESSIBILITY_ENABLED=' "$NTFY"
+          grep -Fq 'FULL_SCREEN_INTENT_ALLOWED=' "$NTFY"
+          echo "V38 detailed DANA-open diagnostics: OK"
 
           # Screen-off/wake logic.
           grep -Fq 'android.permission.WAKE_LOCK' "$MANIFEST"
@@ -191,7 +207,7 @@ workflows:
           grep -Fq 'dispatchNextDirectTap' "$SERVICE"
           echo "Original learned 10-point tap logic: OK"
 
-          # V34 advertisement/promo blocking protection.
+          # V36 advertisement/promo blocking protection.
           grep -Fq 'AD_DISMISS_VERIFY_DELAY_MS = 450L' "$SERVICE"
           grep -Fq 'AD_DISMISS_MAX_ATTEMPTS = 5' "$SERVICE"
           grep -Fq 'AD_EVIDENCE_TEXTS' "$SERVICE"
@@ -204,6 +220,13 @@ workflows:
           grep -Fq 'findVisualCloseX' "$SERVICE"
           grep -Fq 'TIDAK tap amplop secara buta' "$SERVICE"
           echo "Advertisement close guard + visual X fallback: OK"
+
+          # V36 full Debug dialog copy-to-clipboard control.
+          grep -Fq 'COPY LOG' "$MAIN"
+          grep -Fq 'ClipboardManager' "$MAIN"
+          grep -Fq 'ClipData.newPlainText' "$MAIN"
+          grep -Fq 'Log berhasil disalin' "$MAIN"
+          echo "COPY LOG button: OK"
 
           # V26 stop-on-success and watchdog.
           grep -Fq 'kamu dapet' "$SERVICE"
@@ -225,7 +248,7 @@ workflows:
           grep -Fq 'handleDanaQrUrl' "$SERVICE"
           echo "QR DANA screenshot/ML Kit logic: OK"
 
-          # V34: DANA link directly inside Telegram/Nicegram/Telegram Plus
+          # V36: DANA link directly inside Telegram/Nicegram/Telegram Plus
           # notification must launch DANA without requiring a QR scan or a
           # notification click.
           grep -Fq 'DANA_NOTIFICATION_URL_PATTERN' "$SERVICE"
@@ -237,14 +260,14 @@ workflows:
           grep -Fq 'openDana.setPackage(DANA_PACKAGE)' "$SERVICE"
           echo "Notification DANA URL auto-open path: OK"
 
-          # V34 Android 14/15 full-screen intent and battery controls.
+          # V36 Android 14/15 full-screen intent and battery controls.
           grep -Fq 'android.permission.USE_FULL_SCREEN_INTENT' "$MANIFEST"
           grep -Fq 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' "$MANIFEST"
           grep -Fq 'ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT' "$MAIN"
           grep -Fq 'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS' "$MAIN"
           grep -Fq 'canUseFullScreenIntent' "$MAIN"
           grep -Fq 'isIgnoringBatteryOptimizations' "$MAIN"
-          echo "V34 full-screen + battery permission controls: OK"
+          echo "V36 full-screen + battery permission controls: OK"
 
           # Manual notification fallback: the visible foreground/full-screen
           # DANA notification must expose a real BUKA DANA action.
@@ -306,8 +329,39 @@ workflows:
           echo "Remote tap limit 1-10: OK"
 
           echo "=================================================="
-          echo "RAW V34 + AD CLOSE + TELEGRAM GROUP BOT CROSS-CHECK PASSED"
+          echo "RAW V36 + AD CLOSE + TELEGRAM GROUP BOT CROSS-CHECK PASSED"
           echo "=================================================="
+
+      - name: Telegram debug download preflight
+        script: |
+          set -euo pipefail
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          BOT="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
+          test -f "$BOT"
+          grep -Fq 'BTN_DEBUG_FILE' "$BOT"
+          grep -Fq 'case "/debugdownload"' "$BOT"
+          grep -Fq 'sendDebugLogFile' "$BOT"
+          grep -Fq 'sendDocument' "$BOT"
+          echo "Telegram DOWNLOAD LOG: OK"
+
+      - name: Screen-off claim diagnostics preflight
+        script: |
+          set -euo pipefail
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          SERVICE="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
+          WAKER="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/ScreenWaker.java"
+          BUILD_FILE="$PROJECT_DIR/app/build.gradle"
+          grep -Fq "versionCode 38" "$BUILD_FILE"
+          grep -Fq "versionName '1.38-merged-diagnostics-screen-off'" "$BUILD_FILE"
+          grep -Fq 'logClaimScreenState' "$SERVICE"
+          grep -Fq 'CLAIM_SCREEN_STATE phase=' "$SERVICE"
+          grep -Fq 'CLAIM_SCREEN_DIM_OR_OFF' "$SERVICE"
+          grep -Fq 'CLAIM_BLOCKED_SECURE_LOCK' "$SERVICE"
+          grep -Fq 'SCREEN_WAKE_ACQUIRED=true' "$WAKER"
+          grep -Fq 'SCREEN_WAKE_FAILED:' "$WAKER"
+          echo "Screen-off claim diagnostics: OK"
 
       - name: Java syntax preflight
         script: |
@@ -474,7 +528,7 @@ workflows:
           echo "$GRADLE_CMD" > "$ROOT/.codemagic_gradle"
           "$GRADLE_CMD" --version
 
-      - name: Build V34 DEBUG APK
+      - name: Build V36 DEBUG APK
         script: |
           set -euo pipefail
 
@@ -484,7 +538,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "BUILD DANA NATIVE RECEIVER V34"
+          echo "BUILD DANA NATIVE RECEIVER V38"
           echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
@@ -517,8 +571,8 @@ workflows:
           fi
 
           mkdir -p "$ROOT/out"
-          cp "$APK" "$ROOT/out/DanaNativeReceiver-V34-BUTTON-FIXED-DEBUG.apk"
-          ls -lh "$ROOT/out/DanaNativeReceiver-V34-BUTTON-FIXED-DEBUG.apk"
+          cp "$APK" "$ROOT/out/DanaNativeReceiver-V38-MERGED-DIAGNOSTICS-SCREEN-OFF-DEBUG.apk"
+          ls -lh "$ROOT/out/DanaNativeReceiver-V38-MERGED-DIAGNOSTICS-SCREEN-OFF-DEBUG.apk"
 
     artifacts:
-      - $CM_BUILD_DIR/out/DanaNativeReceiver-V34-BUTTON-FIXED-DEBUG.apk
+      - $CM_BUILD_DIR/out/DanaNativeReceiver-V38-MERGED-DIAGNOSTICS-SCREEN-OFF-DEBUG.apk

@@ -1,6 +1,6 @@
 workflows:
-  dana-native-receiver-v38-merged-diagnostics-screen-off:
-    name: DanaNativeReceiver V38 - DETAILED DANA OPEN DIAGNOSTICS + AD CLOSE + TELEGRAM BOT CONTROL
+  dana-native-receiver-v39-merged-all-fixes:
+    name: DanaNativeReceiver V39 - DETAILED DANA OPEN DIAGNOSTICS + AD CLOSE + TELEGRAM BOT CONTROL
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -8,7 +8,7 @@ workflows:
       java: 17
 
     scripts:
-      - name: Prepare V38 Android project
+      - name: Prepare V39 Android project
         script: |
           set -euo pipefail
 
@@ -16,7 +16,7 @@ workflows:
           cd "$ROOT"
 
           echo "=================================================="
-          echo "DANA NATIVE RECEIVER V38"
+          echo "DANA NATIVE RECEIVER V39"
           echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
@@ -28,15 +28,15 @@ workflows:
           else
             ZIP_FILE=""
 
-            # Prefer the exact V38 source archive. This prevents Codemagic from
+            # Prefer the exact V39 source archive. This prevents Codemagic from
             # accidentally selecting an older DanaNativeReceiver*.zip when
             # several archives exist in the workspace.
-            PREFERRED_ZIP="$ROOT/DanaNativeReceiver_V38_MERGED_DIAGNOSTICS_SCREEN_OFF.zip"
+            PREFERRED_ZIP="$ROOT/DanaNativeReceiver_V39_MERGED_ALL_FIXES.zip"
             if [ -f "$PREFERRED_ZIP" ]; then
               ZIP_FILE="$PREFERRED_ZIP"
             else
               for pattern in \
-                "$ROOT"/DanaNativeReceiver_V38*.zip \
+                "$ROOT"/DanaNativeReceiver_V39*.zip \
                 "$ROOT"/DanaNativeReceiver*.zip; do
                 if [ -f "$pattern" ]; then
                   ZIP_FILE="$pattern"
@@ -82,23 +82,23 @@ workflows:
           # Verify that the selected Android source is V36 before any other
           # cross-check is allowed to run.
           BUILD_FILE="$PROJECT_DIR/app/build.gradle"
-          grep -Fq "versionCode 38" "$BUILD_FILE" || {
-            echo "ERROR: Selected source is not V38 (versionCode 38 missing)."
+          grep -Fq "versionCode 39" "$BUILD_FILE" || {
+            echo "ERROR: Selected source is not V39 (versionCode 39 missing)."
             exit 1
           }
-          grep -Fq "versionName '1.38-merged-diagnostics-screen-off'" "$BUILD_FILE" || {
-            echo "ERROR: Selected source is not V38 (versionName mismatch)."
+          grep -Fq "versionName '1.39-merged-all-fixes'" "$BUILD_FILE" || {
+            echo "ERROR: Selected source is not V39 (versionName mismatch)."
             exit 1
           }
-          echo "Selected V38 source: OK"
+          echo "Selected V39 source: OK"
 
-          # Hard guard against the exact compile error seen in V36: the polling
+          # Hard guard against the exact compile error seen in V39: the polling
           # loop calls saveUpdateId(long), so the selected source MUST contain
           # that method before Gradle is allowed to compile anything.
           BOT_CONTROLLER="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
           test -f "$BOT_CONTROLLER"
           grep -Fq 'if (id >= 0) saveUpdateId(id + 1L);' "$BOT_CONTROLLER" || {
-            echo "ERROR: TelegramBotController.java is not the expected V38 source (call missing)."
+            echo "ERROR: TelegramBotController.java is not the expected V39 source (call missing)."
             exit 1
           }
           grep -Fq 'private void saveUpdateId(long nextOffset)' "$BOT_CONTROLLER" || {
@@ -109,19 +109,19 @@ workflows:
 
           SERVICE="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
           test -f "$SERVICE"
-          grep -Fq 'versionCode 38' "$PROJECT_DIR/app/build.gradle" || {
-            echo "ERROR: Selected source is not V38 (versionCode 38 missing)."
+          grep -Fq 'versionCode 39' "$PROJECT_DIR/app/build.gradle" || {
+            echo "ERROR: Selected source is not V39 (versionCode 39 missing)."
             exit 1
           }
-          grep -Fq "versionName '1.38-merged-diagnostics-screen-off'" "$PROJECT_DIR/app/build.gradle" || {
-            echo "ERROR: Selected source is not V38 (versionName mismatch)."
+          grep -Fq "versionName '1.39-merged-all-fixes'" "$PROJECT_DIR/app/build.gradle" || {
+            echo "ERROR: Selected source is not V39 (versionName mismatch)."
             exit 1
           }
           grep -Fq 'maybeDismissBlockingAdIfPresent' "$SERVICE" || {
             echo "ERROR: V36 ad-close protection missing from selected source."
             exit 1
           }
-          echo "V38 source identity + AD CLOSE protection guard: OK"
+          echo "V39 source identity + AD CLOSE protection guard: OK"
 
       - name: Cross-check raw V36 logic and Telegram Bot layer
         script: |
@@ -132,7 +132,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "CROSS-CHECK RAW V38 + DETAILED OPEN DIAGNOSTICS + AD CLOSE + TELEGRAM GROUP BOT"
+          echo "CROSS-CHECK RAW V39 + DETAILED OPEN DIAGNOSTICS + AD CLOSE + TELEGRAM GROUP BOT"
           echo "=================================================="
 
           BASE="app/src/main/java/id/varino/danareceiver"
@@ -160,8 +160,8 @@ workflows:
           grep -Fq "applicationId 'id.varino.danareceiver'" "$BUILD_FILE"
           grep -Fq 'compileSdk 35' "$BUILD_FILE"
           grep -Fq 'targetSdk 35' "$BUILD_FILE"
-          grep -Fq 'versionCode 38' "$BUILD_FILE"
-          grep -Fq "versionName '1.38-merged-diagnostics-screen-off'" "$BUILD_FILE"
+          grep -Fq 'versionCode 39' "$BUILD_FILE"
+          grep -Fq "versionName '1.39-merged-all-fixes'" "$BUILD_FILE"
           echo "Raw V38 build metadata: OK"
 
           # V38 detailed diagnostics for failed/uncertain DANA opening.
@@ -348,19 +348,27 @@ workflows:
       - name: Screen-off claim diagnostics preflight
         script: |
           set -euo pipefail
+
           ROOT="$CM_BUILD_DIR"
           PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
           SERVICE="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
           WAKER="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/ScreenWaker.java"
           BUILD_FILE="$PROJECT_DIR/app/build.gradle"
-          grep -Fq "versionCode 38" "$BUILD_FILE"
-          grep -Fq "versionName '1.38-merged-diagnostics-screen-off'" "$BUILD_FILE"
-          grep -Fq 'logClaimScreenState' "$SERVICE"
+
+          grep -Fq "versionCode 39" "$BUILD_FILE"
+          grep -Fq "versionName '1.39-merged-all-fixes'" "$BUILD_FILE"
+
+          grep -Fq 'private boolean logClaimScreenState(String phase)' "$SERVICE"
           grep -Fq 'CLAIM_SCREEN_STATE phase=' "$SERVICE"
           grep -Fq 'CLAIM_SCREEN_DIM_OR_OFF' "$SERVICE"
           grep -Fq 'CLAIM_BLOCKED_SECURE_LOCK' "$SERVICE"
+          grep -Fq 'CLAIM_BLOCKED_ACCESSIBILITY_DISABLED' "$SERVICE"
+
           grep -Fq 'SCREEN_WAKE_ACQUIRED=true' "$WAKER"
+          grep -Fq 'SCREEN_WAKE_RENEWED=true' "$WAKER"
           grep -Fq 'SCREEN_WAKE_FAILED:' "$WAKER"
+          grep -Fq 'PowerManager unavailable' "$WAKER"
+
           echo "Screen-off claim diagnostics: OK"
 
       - name: Java syntax preflight
@@ -528,7 +536,7 @@ workflows:
           echo "$GRADLE_CMD" > "$ROOT/.codemagic_gradle"
           "$GRADLE_CMD" --version
 
-      - name: Build V36 DEBUG APK
+      - name: Build V39 DEBUG APK
         script: |
           set -euo pipefail
 
@@ -538,7 +546,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "BUILD DANA NATIVE RECEIVER V38"
+          echo "BUILD DANA NATIVE RECEIVER V39"
           echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
@@ -571,8 +579,8 @@ workflows:
           fi
 
           mkdir -p "$ROOT/out"
-          cp "$APK" "$ROOT/out/DanaNativeReceiver-V38-MERGED-DIAGNOSTICS-SCREEN-OFF-DEBUG.apk"
-          ls -lh "$ROOT/out/DanaNativeReceiver-V38-MERGED-DIAGNOSTICS-SCREEN-OFF-DEBUG.apk"
+          cp "$APK" "$ROOT/out/DanaNativeReceiver-V39-MERGED-ALL-FIXES-DEBUG.apk"
+          ls -lh "$ROOT/out/DanaNativeReceiver-V39-MERGED-ALL-FIXES-DEBUG.apk"
 
     artifacts:
-      - $CM_BUILD_DIR/out/DanaNativeReceiver-V38-MERGED-DIAGNOSTICS-SCREEN-OFF-DEBUG.apk
+      - $CM_BUILD_DIR/out/DanaNativeReceiver-V39-MERGED-ALL-FIXES-DEBUG.apk

@@ -1,6 +1,6 @@
 workflows:
-  dana-native-receiver-v43-parallel-device-relay:
-    name: DanaNativeReceiver V43 - PARALLEL DEVICE RELAY + DEFAULT TELEGRAM CONFIG
+  dana-native-receiver-v45-parallel-device-relay:
+    name: DanaNativeReceiver V45 - PARALLEL DEVICE RELAY + DEFAULT TELEGRAM CONFIG
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -8,7 +8,7 @@ workflows:
       java: 17
 
     scripts:
-      - name: Prepare V43 Android project
+      - name: Prepare V45 Android project
         script: |
           set -euo pipefail
 
@@ -16,7 +16,7 @@ workflows:
           cd "$ROOT"
 
           echo "=================================================="
-          echo "DANA NATIVE RECEIVER V43"
+          echo "DANA NATIVE RECEIVER V45"
           echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
@@ -26,24 +26,24 @@ workflows:
             PROJECT_DIR="$ROOT"
             echo "Android project detected at repository root."
           else
-            # First prefer a nested V43 project directory. This makes the workflow
+            # First prefer a nested V45 project directory. This makes the workflow
             # work even when Codemagic receives the complete source ZIP directly.
-            NESTED_SETTINGS="$(find "$ROOT" -maxdepth 6 -type f \( -path "*/DanaNativeReceiver_V43_PARALLEL_DEVICE_RELAY/settings.gradle" -o -path "*/DanaNativeReceiver_V43_PARALLEL_DEVICE_RELAY/settings.gradle.kts" \) -print -quit 2>/dev/null || true)"
+            NESTED_SETTINGS="$(find "$ROOT" -maxdepth 6 -type f \( -path "*/DanaNativeReceiver_V45_PARALLEL_DEVICE_RELAY/settings.gradle" -o -path "*/DanaNativeReceiver_V45_PARALLEL_DEVICE_RELAY/settings.gradle.kts" \) -print -quit 2>/dev/null || true)"
             if [ -n "$NESTED_SETTINGS" ]; then
               PROJECT_DIR="$(cd "$(dirname "$NESTED_SETTINGS")" && pwd)"
-              echo "V43 Android project detected in nested source directory."
+              echo "V45 Android project detected in nested source directory."
             else
               ZIP_FILE=""
 
-            # Prefer the exact V43 source archive. This prevents Codemagic from
+            # Prefer the exact V45 source archive. This prevents Codemagic from
             # accidentally selecting an older DanaNativeReceiver*.zip when
             # several archives exist in the workspace.
-            PREFERRED_ZIP="$ROOT/DanaNativeReceiver_V43_PARALLEL_DEVICE_RELAY.zip"
+            PREFERRED_ZIP="$ROOT/DanaNativeReceiver_V45_PARALLEL_DEVICE_RELAY.zip"
             if [ -f "$PREFERRED_ZIP" ]; then
               ZIP_FILE="$PREFERRED_ZIP"
             else
               for pattern in \
-                "$ROOT"/DanaNativeReceiver_V43*.zip \
+                "$ROOT"/DanaNativeReceiver_V45*.zip \
                 "$ROOT"/DanaNativeReceiver*.zip; do
                 if [ -f "$pattern" ]; then
                   ZIP_FILE="$pattern"
@@ -87,18 +87,18 @@ workflows:
           echo "$PROJECT_DIR" > "$ROOT/.codemagic_project_dir"
           echo "PROJECT_DIR=$PROJECT_DIR"
 
-          # Verify that the selected Android source is V43 before any other
+          # Verify that the selected Android source is V45 before any other
           # cross-check is allowed to run.
           BUILD_FILE="$PROJECT_DIR/app/build.gradle"
-          grep -Fq "versionCode 43" "$BUILD_FILE" || {
-            echo "ERROR: Selected source is not V43 (versionCode 43 missing)."
+          grep -Fq "versionCode 45" "$BUILD_FILE" || {
+            echo "ERROR: Selected source is not V45 (versionCode 45 missing)."
             exit 1
           }
-          grep -Fq "versionName '1.43-parallel-device-relay'" "$BUILD_FILE" || {
-            echo "ERROR: Selected source is not V43 (versionName mismatch)."
+          grep -Fq "versionName '1.45-parallel-device-id'" "$BUILD_FILE" || {
+            echo "ERROR: Selected source is not V45 (versionName mismatch)."
             exit 1
           }
-          echo "Selected V43 source: OK"
+          echo "Selected V45 source: OK"
 
           # Hard guard against the exact compile error seen in V39: the polling
           # loop calls saveUpdateId(long), so the selected source MUST contain
@@ -106,7 +106,7 @@ workflows:
           BOT_CONTROLLER="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
           test -f "$BOT_CONTROLLER"
           grep -Fq 'if (id >= 0) saveUpdateId(id + 1L);' "$BOT_CONTROLLER" || {
-            echo "ERROR: TelegramBotController.java is not the expected V43 source (call missing)."
+            echo "ERROR: TelegramBotController.java is not the expected V45 source (call missing)."
             exit 1
           }
           grep -Fq 'private void saveUpdateId(long nextOffset)' "$BOT_CONTROLLER" || {
@@ -117,19 +117,19 @@ workflows:
 
           SERVICE="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/DanaAutoClickAccessibilityService.java"
           test -f "$SERVICE"
-          grep -Fq 'versionCode 43' "$PROJECT_DIR/app/build.gradle" || {
-            echo "ERROR: Selected source is not V43 (versionCode 43 missing)."
+          grep -Fq 'versionCode 45' "$PROJECT_DIR/app/build.gradle" || {
+            echo "ERROR: Selected source is not V45 (versionCode 45 missing)."
             exit 1
           }
-          grep -Fq "versionName '1.43-parallel-device-relay'" "$PROJECT_DIR/app/build.gradle" || {
-            echo "ERROR: Selected source is not V43 (versionName mismatch)."
+          grep -Fq "versionName '1.45-parallel-device-id'" "$PROJECT_DIR/app/build.gradle" || {
+            echo "ERROR: Selected source is not V45 (versionName mismatch)."
             exit 1
           }
           grep -Fq 'maybeDismissBlockingAdIfPresent' "$SERVICE" || {
             echo "ERROR: V36 ad-close protection missing from selected source."
             exit 1
           }
-          echo "V43 source identity + AD CLOSE protection guard: OK"
+          echo "V45 source identity + AD CLOSE protection guard: OK"
 
       - name: Cross-check raw V36 logic and Telegram Bot layer
         script: |
@@ -140,7 +140,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "CROSS-CHECK RAW V43 + DETAILED OPEN DIAGNOSTICS + AD CLOSE + DEVICE LOG BUTTONS"
+          echo "CROSS-CHECK RAW V45 + DETAILED OPEN DIAGNOSTICS + AD CLOSE + DEVICE LOG BUTTONS"
           echo "=================================================="
 
           BASE="app/src/main/java/id/varino/danareceiver"
@@ -163,7 +163,7 @@ workflows:
 
           echo "Required files: OK"
 
-          # V43 default configuration guard.
+          # V45 default configuration guard.
           # These values are intentionally checked against MainActivity.java
           # so the Codemagic source and the embedded APK defaults cannot drift.
           grep -Fq 'DEFAULT_TOPIC = "dana_receiver_9f7k2m8x"' "$MAIN"
@@ -174,16 +174,16 @@ workflows:
           grep -Fq 'DEFAULT_DEVICE_ID = "hp 1"' "$MAIN"
           grep -Fq 'applyFirstInstallDefaults(p);' "$MAIN"
           grep -Fq 'if (!p.contains("telegram_bot_token"))' "$MAIN"
-          echo "V43 default Telegram configuration: OK"
+          echo "V45 default Telegram configuration: OK"
 
-          # Raw V43 identity/version.
+          # Raw V45 identity/version.
           grep -Fq "namespace 'id.varino.danareceiver'" "$BUILD_FILE"
           grep -Fq "applicationId 'id.varino.danareceiver'" "$BUILD_FILE"
           grep -Fq 'compileSdk 35' "$BUILD_FILE"
           grep -Fq 'targetSdk 35' "$BUILD_FILE"
-          grep -Fq 'versionCode 43' "$BUILD_FILE"
-          grep -Fq "versionName '1.43-parallel-device-relay'" "$BUILD_FILE"
-          echo "Raw V43 build metadata: OK"
+          grep -Fq 'versionCode 45' "$BUILD_FILE"
+          grep -Fq "versionName '1.45-parallel-device-id'" "$BUILD_FILE"
+          echo "Raw V45 build metadata: OK"
 
           # V38 detailed diagnostics for failed/uncertain DANA opening.
           grep -Fq 'OPEN_FAIL_DANA_NOT_INSTALLED' "$NTFY"
@@ -338,7 +338,7 @@ workflows:
           grep -Fq 'primaryChatId' "$BOT"
           grep -Fq 'TelegramBotService' "$MANIFEST"
           grep -Fq 'TelegramBotController.sendClaimReport' "$SERVICE"
-          # V43 parallel device relay: only one device polls Telegram; workers receive commands via ntfy.
+          # V45 parallel device relay: only one device polls Telegram; workers receive commands via ntfy.
           grep -Fq 'KEY_GATEWAY' "$BOT"
           grep -Fq 'KEY_SELECTED_TARGET' "$BOT"
           grep -Fq 'publishRelayCommand' "$BOT"
@@ -363,7 +363,7 @@ workflows:
           echo "Remote tap limit 1-10: OK"
 
           echo "=================================================="
-          echo "RAW V43 + PARALLEL DEVICE RELAY + AD CLOSE + DEVICE LOG BUTTON CROSS-CHECK PASSED"
+          echo "RAW V45 + PARALLEL DEVICE RELAY + AD CLOSE + DEVICE LOG BUTTON CROSS-CHECK PASSED"
           echo "=================================================="
 
       - name: Telegram debug download preflight
@@ -394,8 +394,8 @@ workflows:
           WAKER="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/ScreenWaker.java"
           BUILD_FILE="$PROJECT_DIR/app/build.gradle"
 
-          grep -Fq "versionCode 43" "$BUILD_FILE"
-          grep -Fq "versionName '1.43-parallel-device-relay'" "$BUILD_FILE"
+          grep -Fq "versionCode 45" "$BUILD_FILE"
+          grep -Fq "versionName '1.45-parallel-device-id'" "$BUILD_FILE"
 
           grep -Fq 'private boolean logClaimScreenState(String phase)' "$SERVICE"
           grep -Fq 'CLAIM_SCREEN_STATE phase=' "$SERVICE"
@@ -410,7 +410,7 @@ workflows:
 
           echo "Screen-off claim diagnostics: OK"
 
-      - name: V43 default configuration preflight
+      - name: V45 default configuration preflight
         script: |
           set -euo pipefail
 
@@ -422,14 +422,14 @@ workflows:
           BUILD_FILE="app/build.gradle"
 
           test -f "$MAIN"
-          grep -Fq 'versionCode 43' "$BUILD_FILE"
-          grep -Fq "versionName '1.43-parallel-device-relay'" "$BUILD_FILE"
+          grep -Fq 'versionCode 45' "$BUILD_FILE"
+          grep -Fq "versionName '1.45-parallel-device-id'" "$BUILD_FILE"
           grep -Fq 'DEFAULT_TOPIC = "dana_receiver_9f7k2m8x"' "$MAIN"
           grep -Fq 'DEFAULT_RECEIVER_TOKEN = "DR_9f7k2m8xQ4v7L2p8N6s5T1"' "$MAIN"
           grep -Fq 'DEFAULT_TELEGRAM_BOT_TOKEN = "8918810475:AAGm0B0RKSoad8Sv_7BlT1I6ofPhbGC5JSs"' "$MAIN"
           grep -Fq 'DEFAULT_DEVICE_ID = "hp 1"' "$MAIN"
           grep -Fq 'applyFirstInstallDefaults(p);' "$MAIN"
-          echo "V43 default configuration preflight: OK"
+          echo "V45 default configuration preflight: OK"
 
       - name: TelegramBotController compile-safety preflight
         script: |
@@ -449,7 +449,87 @@ workflows:
           test "$DEBUG_CASES" = "1" || { echo "ERROR: duplicate/missing processCommand /debug case"; exit 1; }
           test "$DOWNLOAD_CASES" = "1" || { echo "ERROR: duplicate/missing processCommand /debugdownload case"; exit 1; }
 
-          echo "TelegramBotController compile-safety preflight: OK"
+          # TXT download must be a real Telegram document, not a truncated message.
+          grep -Fq 'sendDocument' "$BOT"
+          grep -Fq '.txt\"' "$BOT"
+          grep -Fq 'debugdownload|hp 1' "$BOT"
+          grep -Fq 'debugdownload|hp 2' "$BOT"
+          grep -Fq 'case "/debugdownloadmenu":' "$BOT"
+          grep -Fq 'BTN_LOG_HP1' "$BOT"
+          grep -Fq 'BTN_LOG_HP2' "$BOT"
+
+          SERVICE="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotService.java"
+          grep -Fq 'boolean hp1 = device.equalsIgnoreCase("hp 1") || device.equalsIgnoreCase("hp1")' "$SERVICE"
+
+          echo "TelegramBotController compile-safety + TXT download preflight: OK"
+
+      - name: Device ID and command routing preflight
+        script: |
+          set -euo pipefail
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          MAIN="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/MainActivity.java"
+          BOT="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
+          SERVICE="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotService.java"
+          NTFY="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/NtfyService.java"
+          test -f "$MAIN" && test -f "$BOT" && test -f "$SERVICE" && test -f "$NTFY"
+          grep -Fq 'Telegram Device ID' "$MAIN"
+          grep -Fq 'SET DEVICE = HP 1' "$MAIN"
+          grep -Fq 'SET DEVICE = HP 2' "$MAIN"
+          grep -Fq 'telegram_device_id' "$MAIN"
+          grep -Fq 'telegram_gateway' "$MAIN"
+          grep -Fq 'hp 1' "$SERVICE"
+          grep -Fq 'hp 2' "$BOT" || true
+          grep -Fq 'target_device' "$BOT"
+          grep -Fq 'handleRelayCommand' "$BOT"
+          grep -Fq 'debugdownload' "$BOT"
+          grep -Fq 'sendDocument' "$BOT"
+          grep -Fq 'filename="dana_debug_trace_' "$BOT"
+          echo "Device ID HP1/HP2 routing + TXT log download: OK"
+
+      - name: Telegram single-poller role preflight
+        script: |
+          set -euo pipefail
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          BOT="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
+          SERVICE="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotService.java"
+          grep -Fq 'Satu-satunya polling Telegram adalah HP 1' "$BOT"
+          grep -Fq 'return hp1 && configured;' "$BOT"
+          grep -Fq 'boolean gateway = hp1 && p.getBoolean("telegram_gateway", hp1);' "$SERVICE"
+          echo "Single Telegram poller role: HP 1 only; HP 2 relay worker: OK"
+
+      - name: Telegram command duplicate-case preflight
+        script: |
+          set -euo pipefail
+          ROOT="$CM_BUILD_DIR"
+          PROJECT_DIR="$(cat "$ROOT/.codemagic_project_dir")"
+          BOT="$PROJECT_DIR/app/src/main/java/id/varino/danareceiver/TelegramBotController.java"
+          python3 - "$BOT" <<'PY2'
+          import re, sys
+          s=open(sys.argv[1], encoding='utf-8').read()
+          # Check duplicate case labels separately inside each switch block.
+          # Labels may legitimately repeat in different switch statements.
+          for m in re.finditer(r'\bswitch\s*\([^)]*\)\s*\{', s):
+              i=m.end(); depth=1; in_str=False; esc=False
+              while i < len(s) and depth:
+                  c=s[i]
+                  if in_str:
+                      if esc: esc=False
+                      elif c=='\\': esc=True
+                      elif c=='"': in_str=False
+                  else:
+                      if c=='"': in_str=True
+                      elif c=='{': depth += 1
+                      elif c=='}': depth -= 1
+                  i += 1
+              block=s[m.end():i-1]
+              labels=re.findall(r'\bcase\s+"([^"]+)"\s*:', block)
+              dup={x:labels.count(x) for x in set(labels) if labels.count(x)>1}
+              if dup:
+                  raise SystemExit(f"ERROR: duplicate Java switch case(s): {dup}")
+          print("Telegram switch case uniqueness: OK")
+          PY2
 
       - name: Java syntax preflight
         script: |
@@ -616,7 +696,7 @@ workflows:
           echo "$GRADLE_CMD" > "$ROOT/.codemagic_gradle"
           "$GRADLE_CMD" --version
 
-      - name: Build V43 DEBUG APK
+      - name: Build V45 DEBUG APK
         script: |
           set -euo pipefail
 
@@ -626,7 +706,7 @@ workflows:
           cd "$PROJECT_DIR"
 
           echo "=================================================="
-          echo "BUILD DANA NATIVE RECEIVER V43"
+          echo "BUILD DANA NATIVE RECEIVER V45"
           echo "SCREEN OFF FIX + TELEGRAM BOT CONTROL"
           echo "=================================================="
 
@@ -659,8 +739,8 @@ workflows:
           fi
 
           mkdir -p "$ROOT/out"
-          cp "$APK" "$ROOT/out/DanaNativeReceiver-V43-PARALLEL-DEVICE-RELAY-DEBUG.apk"
-          ls -lh "$ROOT/out/DanaNativeReceiver-V43-PARALLEL-DEVICE-RELAY-DEBUG.apk"
+          cp "$APK" "$ROOT/out/DanaNativeReceiver-V45-PARALLEL-DEVICE-RELAY-DEBUG.apk"
+          ls -lh "$ROOT/out/DanaNativeReceiver-V45-PARALLEL-DEVICE-RELAY-DEBUG.apk"
 
     artifacts:
-      - $CM_BUILD_DIR/out/DanaNativeReceiver-V43-PARALLEL-DEVICE-RELAY-DEBUG.apk
+      - $CM_BUILD_DIR/out/DanaNativeReceiver-V45-PARALLEL-DEVICE-RELAY-DEBUG.apk

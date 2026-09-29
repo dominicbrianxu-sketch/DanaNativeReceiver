@@ -377,7 +377,7 @@ workflows:
           grep -Fq 'case "/debugdownload"' "$BOT"
           grep -Fq 'sendDebugLogFile' "$BOT"
           grep -Fq 'sendDocument' "$BOT"
-          grep -Fq 'deviceLogButton' "$BOT"
+          grep -Fq 'buildDebugDownloadKeyboard' "$BOT"
           grep -Fq 'shortDeviceLabel' "$BOT"
           grep -Fq 'debugdownload_local' "$BOT"
           grep -Fq 'buildDeviceKeyboard' "$BOT"
